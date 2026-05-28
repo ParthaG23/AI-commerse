@@ -138,17 +138,26 @@ function getRandomReviews(category: string): any[] {
   return generatedReviews;
 }
 
-// Check which image file actually exists locally
-function getLocalImage(asin: string, rawSubcategory: string, remoteUrl: string | null): string {
-  const extensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
-  for (const ext of extensions) {
-    const localPath = path.join(IMAGES_DIR, rawSubcategory, `${asin}${ext}`);
-    if (fs.existsSync(localPath)) {
-      return `/images/${rawSubcategory}/${asin}${ext}`;
-    }
+// Convert Amazon thumbnail image URLs to full-resolution CDN URLs
+function getFullResImage(url: string | null): string {
+  if (!url) {
+    return 'https://via.placeholder.com/300?text=Product+Image';
   }
-  // Fallback to remote image URL or a default thumbnail if null
-  return remoteUrl || 'https://via.placeholder.com/300?text=Product+Image';
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname;
+    
+    // Regex matching Amazon size modifiers
+    // e.g. ._AC_UL320_ , ._SX300_QL70_ , ._SY300_ , _SX300 , _SY300, ._V1234567_
+    const sizeRegex = /\._[A-Z0-9_,]+_|_(?:SX|SY)\d+|\._V\d+_/gi;
+    
+    let cleanPath = pathname.replace(sizeRegex, "");
+    cleanPath = cleanPath.replace(/\.{2,}/g, ".");
+    
+    return `https://${parsed.host}${cleanPath}`;
+  } catch (e) {
+    return url;
+  }
 }
 
 async function seedDatabase() {
@@ -185,7 +194,7 @@ async function seedDatabase() {
       }
 
       const highLevelCat = CATEGORY_MAP[p.category] || 'Electronics';
-      const localImgPath = getLocalImage(p.asin, p.category, p.img_url);
+      const fullResImgPath = getFullResImage(p.img_url);
 
       // Clean rating
       const rating = p.rating || (Math.random() * 0.9 + 4.0); // Default random 4.0 - 4.9 rating
@@ -197,7 +206,7 @@ async function seedDatabase() {
         name: p.title.trim(),
         description: desc,
         price: Number(price),
-        images: [localImgPath],
+        images: [fullResImgPath],
         category: highLevelCat,
         subcategory: p.category,
         stock: Math.floor(Math.random() * 90) + 10, // 10 to 100 stock

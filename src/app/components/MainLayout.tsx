@@ -223,7 +223,7 @@ function formatParamValue(key: string, value: string | number | string[]): strin
 }
 
 // ─── Search card ──────────────────────────────────────────────────────────────
-function SearchCard({ params, query }: { params: SearchParams; query: string }) {
+function SearchCard({ params, query, loading }: { params: SearchParams; query: string; loading: boolean }) {
   const showKeys = ['category', 'price_min', 'price_max', 'color', 'brand', 'features', 'sort'];
   const entries = Object.entries(params).filter(([k, v]) => {
     if (!showKeys.includes(k)) return false;
@@ -239,7 +239,22 @@ function SearchCard({ params, query }: { params: SearchParams; query: string }) 
           <p className="nv-search-card__title">Searching catalog</p>
           <p className="nv-search-card__query">"{query}"</p>
         </div>
-        <div className="nv-search-card__spinner" />
+        {loading ? (
+          <div className="nv-search-card__spinner" />
+        ) : (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '16px',
+            height: '16px',
+            borderRadius: '50%',
+            backgroundColor: '#ecfdf5',
+            border: '1px solid #10b981',
+          }}>
+            <Check size={9} color="#10b981" strokeWidth={3} />
+          </div>
+        )}
       </div>
       {entries.length > 0 && (
         <div className="nv-search-card__params">
@@ -252,7 +267,16 @@ function SearchCard({ params, query }: { params: SearchParams; query: string }) 
         </div>
       )}
       <div className="nv-search-card__footer">
-        <Package size={10} /><span>Fetching matching products…</span>
+        {loading ? (
+          <>
+            <Package size={10} /><span>Fetching matching products…</span>
+          </>
+        ) : (
+          <>
+            <Check size={10} color="#10b981" />
+            <span style={{ color: '#10b981', fontWeight: 500 }}>Search completed</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -260,12 +284,13 @@ function SearchCard({ params, query }: { params: SearchParams; query: string }) 
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 function MessageBubble({
-  message, index, isCopied, onCopy, onSpeak, isSpeaking,
+  message, index, isCopied, onCopy, onSpeak, isSpeaking, loading,
 }: {
   message: ChatMessage; index: number; isCopied: boolean;
   onCopy: (text: string, i: number) => void;
   onSpeak: (text: string, lang: string) => void;
   isSpeaking: boolean;
+  loading: boolean;
 }) {
   const isUser = message.sender === 'user';
   const isSearch = message.type === 'search' && message.searchParams;
@@ -274,7 +299,7 @@ function MessageBubble({
     <div className={`nv-msg-row ${isUser ? 'nv-msg-row--user' : 'nv-msg-row--ai'}`}>
       {!isUser && <div className="nv-msg-avatar nv-msg-avatar--ai"><Bot size={12} /></div>}
       {isSearch ? (
-        <SearchCard params={message.searchParams!} query={message.content} />
+        <SearchCard params={message.searchParams!} query={message.content} loading={loading} />
       ) : (
         <div className={`nv-msg-bubble ${isUser ? 'nv-msg-bubble--user' : 'nv-msg-bubble--ai'}`}>
           <p className="nv-msg-text">{message.content}</p>
@@ -439,7 +464,12 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       const aiRes = await fetch('/api/ai-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: rawQuery, normalizedQuery, lang: detectedLang }),
+        body: JSON.stringify({
+          query: rawQuery,
+          normalizedQuery,
+          lang: detectedLang,
+          userId: user?._id || null
+        }),
       });
 
       if (aiRes.ok) {
@@ -536,6 +566,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           onCopy={handleCopy}
           onSpeak={(text, lang) => speakMessage(text, lang, i)}
           isSpeaking={speakingIndex === i}
+          loading={i === messages.length - 1 && isThinking}
         />
       ))}
       {isThinking && (

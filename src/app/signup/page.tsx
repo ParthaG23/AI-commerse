@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuthStore } from '../store/auth';
+import NuvixLogo from '../components/NuvixLogo';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import Link from 'next/link';
@@ -81,9 +82,7 @@ export default function SignupPage() {
 
         {/* ── Brand Header ── */}
         <div className="relative z-10 flex items-center space-x-3">
-          <div className="h-10 w-10 rounded-2xl bg-white/20 dark:bg-gradient-to-br dark:from-indigo-500 dark:to-cyan-400 flex items-center justify-center shadow-[0_0_24px_rgba(255,255,255,0.25)] dark:shadow-[0_0_24px_rgba(99,102,241,0.6)] backdrop-blur-sm border border-white/30 dark:border-transparent">
-            <Sparkles className="h-5 w-5 text-white" />
-          </div>
+          <NuvixLogo size={38} glow={true} />
           <span className="text-xl font-black tracking-[0.25em] text-white uppercase select-none">NUVIX</span>
           <div className="ml-2 px-2.5 py-0.5 rounded-full bg-white/15 dark:bg-white/5 border border-white/25 dark:border-white/10 text-[9px] font-black text-white dark:text-cyan-300 tracking-widest uppercase backdrop-blur-sm">
             Premium

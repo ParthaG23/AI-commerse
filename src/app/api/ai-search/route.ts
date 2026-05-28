@@ -2,8 +2,44 @@ import { NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 import dbConnect from '@/lib/mongodb';
 import Product from '@/models/Product';
+import User from '@/models/User';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API });
+
+const SUBCATEGORY_GENERIC_WORDS: { [key: string]: string[] } = {
+  men_tshirt: ['tshirt', 't-shirt', 'tees', 'tee', 'polo'],
+  men_shirt: ['shirt', 'shirts', 'formal', 'casual'],
+  men_jeans: ['jeans', 'pant', 'pants', 'denim', 'trouser', 'trousers'],
+  men_shorts: ['shorts', 'short', 'cargo', 'half-pant'],
+  women_dress: ['dress', 'dresses', 'gown', 'gowns', 'salwar', 'suit', 'suits', 'lehenga'],
+  women_saree: ['saree', 'sari', 'sarees', 'traditional'],
+  women_kurta: ['kurta', 'kurti', 'kurtis', 'kurtas'],
+  men_shoes: ['shoes', 'shoe', 'sneakers', 'sneaker', 'boots', 'boot', 'sandals', 'sandal', 'slippers', 'slipper'],
+  women_shoes: ['shoes', 'shoe', 'heels', 'heel', 'flats', 'flat', 'boots', 'boot', 'sandals', 'sandal', 'wedges', 'wedge'],
+  backpack: ['backpack', 'backpacks', 'bag', 'bags', 'travel'],
+  sunglasses: ['sunglasses', 'sunglass', 'goggles', 'goggle', 'glass', 'glasses', 'eyewear'],
+  smartphone: ['phone', 'phones', 'mobile', 'mobiles', 'smartphone', 'smartphones', 'cellphone', 'cellphones'],
+  laptop: ['laptop', 'laptops', 'notebook', 'notebooks'],
+  gaming_laptop: ['laptop', 'laptops', 'gaming'],
+  tablet: ['tablet', 'tablets', 'ipad', 'ipads'],
+  smartwatch: ['watch', 'watches', 'smartwatch', 'smartwatches', 'band', 'bands'],
+  smart_tv: ['tv', 'tvs', 'television', 'televisions', 'led', 'leds'],
+  headphones: ['headphones', 'headphone', 'headfone', 'headfones'],
+  earbuds: ['earbuds', 'earbud', 'airpods', 'airpod', 'tws'],
+  face_cream: ['cream', 'creams', 'moisturizer', 'moisturizers', 'serum', 'serums', 'facecream'],
+  shampoo: ['shampoo', 'shampoos', 'conditioner', 'conditioners', 'hair'],
+  perfume: ['perfume', 'perfumes', 'scent', 'scents', 'cologne', 'colognes'],
+  electric_toothbrush: ['toothbrush', 'toothbrushes', 'electric'],
+  yoga_mat: ['mat', 'mats', 'yoga'],
+  cricket_bat: ['bat', 'bats', 'cricket'],
+  fitness_tracker: ['tracker', 'trackers', 'fitness', 'band', 'bands'],
+  books_bestseller: ['books', 'book', 'bestseller'],
+  toys: ['toys', 'toy'],
+  dry_fruits: ['dry', 'fruits', 'fruit', 'almond', 'almonds', 'cashew', 'cashews'],
+  protein_powder: ['protein', 'powder', 'whey'],
+  car_accessories: ['car', 'accessories', 'accessory'],
+  helmet: ['helmet', 'helmets', 'driving']
+};
 
 const systemPrompt1 = `You are the Intent Extractor for Nuvix, an advanced Indian e-commerce platform.
 Given a user query (which might have spelling mistakes, mixed Indian languages like Hindi/Hinglish/Tamil/Telugu/Bengali, or vague descriptions), extract structured search parameters.
@@ -21,8 +57,13 @@ Spelling Corrections & Language:
 
 Detailed Category & Subcategory Tree (Critical for precise catalog matching):
 1. Fashion:
-   - "men_tshirt": for men's shirts, t-shirts, polo, tees, etc.
-   - "women_dress": for women's dresses, sarees, kurtas, gowns, etc.
+   - "men_tshirt": for men's t-shirts, polo, tees, etc.
+   - "men_shirt": for men's formal shirts, casual shirts, etc.
+   - "men_jeans": for men's jeans, denim, trousers, pants, etc.
+   - "men_shorts": for men's shorts, cargo shorts, etc.
+   - "women_dress": for women's dresses, gowns, salwars, suits, etc.
+   - "women_saree": for women's sarees, traditional wear, etc.
+   - "women_kurta": for women's kurtas, kurtis, etc.
    - "men_shoes": for men's sneakers, formal shoes, sandals, boots, etc.
    - "women_shoes": for women's heels, flats, boots, etc.
    - "backpack": for backpacks, travel bags.
@@ -71,6 +112,11 @@ Detailed Category & Subcategory Tree (Critical for precise catalog matching):
 9. Automotive:
    - "car_accessories": for car accessories.
    - "helmet": for driving helmets.
+
+Follow-up Queries & Conversation Context:
+- The user might send a short follow-up query (e.g. "under 1000", "in black", "Peter England", "show me more"). 
+- In such cases, look at the recent conversation turns in the chat history. Carry over the active search context (the parent category, subcategory, brand, etc.) from the previous turns.
+- For example, if the user previously searched for "shirt" (subcategory: men_shirt) and now says "under 1000", the subcategory remains "men_shirt", the category remains "Fashion", and you must add "price_max": 1000.
 
 You MUST respond with valid JSON ONLY. No markdown wrappers (no \`\`\`json), no pre-text, no post-text.
 Format:
@@ -163,10 +209,23 @@ function mapCategory(cat: string): string | null {
   return null;
 }
 
-async function queryCatalog(rawSp: any) {
+async function queryCatalog(rawSp: any, userId?: string | null) {
   await dbConnect();
   const sp = sanitizeParams(rawSp);
   const filter: any = {};
+
+  // Retrieve user preferences for AI-driven personalization and budget predictions
+  let userPrefs: any = null;
+  if (userId) {
+    try {
+      const userObj = await User.findById(userId).lean();
+      if (userObj && userObj.preferences) {
+        userPrefs = userObj.preferences;
+      }
+    } catch (e) {
+      console.error('Error fetching user preferences:', e);
+    }
+  }
 
   // Category
   const dbCategory = mapCategory(sp.category);
@@ -179,12 +238,15 @@ async function queryCatalog(rawSp: any) {
     filter.subcategory = { $regex: new RegExp(`^${sp.subcategory}$`, 'i') };
   }
 
-  // Price range
+  // Price range - support predictive preference constraints
   if (sp.price_min || sp.price_max) {
     const priceFilter: any = {};
     if (sp.price_min) priceFilter.$gte = Number(sp.price_min);
     if (sp.price_max) priceFilter.$lte = Number(sp.price_max);
     filter.price = priceFilter;
+  } else if (userPrefs && userPrefs.budgetMax && Number(userPrefs.budgetMax) > 0) {
+    // Apply user's historical budget ceiling predictively if they didn't specify one
+    filter.price = { $lte: Number(userPrefs.budgetMax) };
   }
 
   // Brand / Color
@@ -201,9 +263,20 @@ async function queryCatalog(rawSp: any) {
   // Search keyword (query) - split and match all words separately with word boundaries
   if (sp.query) {
     const stopWords = new Set(['for', 'with', 'under', 'above', 'in', 'of', 'and', 'a', 'an', 'the', 'ke', 'ka', 'ki', 'se', 'kam', 'zyada']);
-    const words = sp.query.split(/\s+/)
+    const genderGenericWords = new Set([
+      'men', 'mens', 'women', 'womens', 'man', 'mans', 'woman', 'womans',
+      'boy', 'boys', 'girl', 'girls', 'kid', 'kids', 'unisex', 'adult', 'adults'
+    ]);
+    let words = sp.query.split(/\s+/)
       .map((w: string) => w.toLowerCase().trim())
-      .filter((w: string) => w !== '' && !stopWords.has(w));
+      .filter((w: string) => w !== '' && !stopWords.has(w) && !genderGenericWords.has(w));
+
+    // Strip generic subcategory terms so they don't block queries when product titles only contain brand names
+    if (sp.subcategory) {
+      const subcatLower = sp.subcategory.toLowerCase();
+      const genericWords = SUBCATEGORY_GENERIC_WORDS[subcatLower] || [];
+      words = words.filter((w: string) => !genericWords.includes(w));
+    }
 
     if (words.length > 0) {
       if (!filter.$and) filter.$and = [];
@@ -225,24 +298,31 @@ async function queryCatalog(rawSp: any) {
 
   let products = await Product.find(filter).sort(sortOption).limit(40).lean();
 
-  // Fallback 1: Relax word boundaries to simple substring matches (no \b required)
+  // Fallback 1: Relax word boundaries to simple substring matches on product name (no \b required)
   if (products.length === 0 && sp.query) {
     const broadFilter: any = {};
     if (dbCategory) broadFilter.category = dbCategory;
     
     const stopWords = new Set(['for', 'with', 'under', 'above', 'in', 'of', 'and', 'a', 'an', 'the', 'ke', 'ka', 'ki', 'se', 'kam', 'zyada']);
-    const words = sp.query.split(/\s+/)
+    const genderGenericWords = new Set([
+      'men', 'mens', 'women', 'womens', 'man', 'mans', 'woman', 'womans',
+      'boy', 'boys', 'girl', 'girls', 'kid', 'kids', 'unisex', 'adult', 'adults'
+    ]);
+    let words = sp.query.split(/\s+/)
       .map((w: string) => w.toLowerCase().trim())
-      .filter((w: string) => w !== '' && !stopWords.has(w));
+      .filter((w: string) => w !== '' && !stopWords.has(w) && !genderGenericWords.has(w));
+
+    if (sp.subcategory) {
+      const subcatLower = sp.subcategory.toLowerCase();
+      const genericWords = SUBCATEGORY_GENERIC_WORDS[subcatLower] || [];
+      words = words.filter((w: string) => !genericWords.includes(w));
+    }
 
     if (words.length > 0) {
       broadFilter.$and = [];
       words.forEach((w: string) => {
         broadFilter.$and.push({
-          $or: [
-            { name: new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-            { description: new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
-          ]
+          name: new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
         });
       });
       products = await Product.find(broadFilter).sort(sortOption).limit(20).lean();
@@ -265,16 +345,97 @@ async function queryCatalog(rawSp: any) {
     }
   }
 
+  // Fallback 3: Subcategory fallback (drop name keywords if 0 items found, query purely by subcategory + price/brand)
+  if (products.length === 0 && sp.subcategory) {
+    const subcatFilter: any = {
+      subcategory: { $regex: new RegExp(`^${sp.subcategory}$`, 'i') }
+    };
+    if (dbCategory) subcatFilter.category = dbCategory;
+
+    if (sp.price_min || sp.price_max) {
+      const priceFilter: any = {};
+      if (sp.price_min) priceFilter.$gte = Number(sp.price_min);
+      if (sp.price_max) priceFilter.$lte = Number(sp.price_max);
+      subcatFilter.price = priceFilter;
+    } else if (userPrefs && userPrefs.budgetMax && Number(userPrefs.budgetMax) > 0) {
+      subcatFilter.price = { $lte: Number(userPrefs.budgetMax) };
+    }
+
+    if (sp.brand) {
+      subcatFilter.name = { $regex: new RegExp(sp.brand, 'i') };
+    }
+
+    products = await Product.find(subcatFilter).sort(sortOption).limit(20).lean();
+  }
+
+  // Fallback 4: Category fallback (drop subcategory if still 0 items found, query purely by category + price/brand)
+  if (products.length === 0 && dbCategory) {
+    const catFilter: any = { category: dbCategory };
+
+    if (sp.price_min || sp.price_max) {
+      const priceFilter: any = {};
+      if (sp.price_min) priceFilter.$gte = Number(sp.price_min);
+      if (sp.price_max) priceFilter.$lte = Number(sp.price_max);
+      catFilter.price = priceFilter;
+    } else if (userPrefs && userPrefs.budgetMax && Number(userPrefs.budgetMax) > 0) {
+      catFilter.price = { $lte: Number(userPrefs.budgetMax) };
+    }
+
+    if (sp.brand) {
+      catFilter.name = { $regex: new RegExp(sp.brand, 'i') };
+    }
+
+    products = await Product.find(catFilter).sort(sortOption).limit(20).lean();
+  }
+
+  // Personalization Brand Boost: Put the user's favorite brands first in the catalog feed
+  if (userPrefs && userPrefs.likedBrands && userPrefs.likedBrands.length > 0) {
+    const likedSet = new Set(userPrefs.likedBrands.map((b: string) => b.toLowerCase().trim()));
+    const preferred: any[] = [];
+    const others: any[] = [];
+
+    products.forEach((p: any) => {
+      const nameLower = p.name.toLowerCase();
+      const isPreferred = Array.from(likedSet).some((brand: string) => nameLower.includes(brand));
+      if (isPreferred) {
+        preferred.push(p);
+      } else {
+        others.push(p);
+      }
+    });
+    products = [...preferred, ...others];
+  }
+
   return products;
 }
 
 export async function POST(req: Request) {
   try {
-    const { query, originalQuery, lang } = await req.json();
+    const { query, originalQuery, lang, userId, history } = await req.json();
     const userQuery = query || originalQuery;
     if (!userQuery) {
       return NextResponse.json({ message: 'Query is required' }, { status: 400 });
     }
+
+    // Construct the LLM messages list with full conversational history context
+    const llmMessages: any[] = [{ role: 'system', content: systemPrompt1 }];
+
+    if (history && Array.isArray(history)) {
+      // Inject the last 6 messages to keep it fast, highly context-aware, and precise
+      const recentHistory = history.slice(-6);
+      recentHistory.forEach((msg: any) => {
+        if (msg.sender === 'user') {
+          llmMessages.push({ role: 'user', content: msg.content });
+        } else if (msg.sender === 'ai') {
+          if (msg.content && msg.type !== 'search') {
+            llmMessages.push({ role: 'assistant', content: msg.content });
+          }
+        }
+      });
+    }
+
+    // Append the current active user query
+    llmMessages.push({ role: 'user', content: userQuery });
 
     // Step 1: Call Llama model to extract structured parameters
     let aiResponse;
@@ -283,10 +444,7 @@ export async function POST(req: Request) {
         model: 'llama-3.3-70b-versatile',
         temperature: 0,
         max_tokens: 1000,
-        messages: [
-          { role: 'system', content: systemPrompt1 },
-          { role: 'user', content: userQuery },
-        ],
+        messages: llmMessages,
       });
       aiResponse = completion.choices[0]?.message?.content?.trim() || '{}';
     } catch (e) {
@@ -295,10 +453,7 @@ export async function POST(req: Request) {
         model: 'llama-3.1-8b-instant',
         temperature: 0,
         max_tokens: 1000,
-        messages: [
-          { role: 'system', content: systemPrompt1 },
-          { role: 'user', content: userQuery },
-        ],
+        messages: llmMessages,
       });
       aiResponse = completion.choices[0]?.message?.content?.trim() || '{}';
     }
@@ -323,7 +478,42 @@ export async function POST(req: Request) {
     // Step 2: Database Catalog Search (if it's a product search query)
     if (qType.includes('search') || qType.includes('recommend') || qType.includes('comparison') || !qType) {
       try {
-        products = await queryCatalog(parsed.searchParams || {});
+        products = await queryCatalog(parsed.searchParams || {}, userId);
+
+        // Dynamically learn & update user preferences in the background!
+        if (userId && parsed.searchParams) {
+          const sp = parsed.searchParams;
+          const userObj = await User.findById(userId);
+          if (userObj) {
+            if (!userObj.preferences) {
+              userObj.preferences = { budgetMin: 0, budgetMax: 0, likedBrands: [], dislikedBrands: [], useCases: [] };
+            }
+
+            let updated = false;
+            // 1. Learn brand preference
+            if (sp.brand) {
+              const brandClean = sp.brand.trim();
+              if (brandClean && !userObj.preferences.likedBrands.some((b: string) => b.toLowerCase() === brandClean.toLowerCase())) {
+                userObj.preferences.likedBrands.push(brandClean);
+                updated = true;
+              }
+            }
+            // 2. Learn budget preference predictively
+            if (sp.price_max && Number(sp.price_max) > 0) {
+              const currentMax = Number(sp.price_max);
+              if (userObj.preferences.budgetMax) {
+                userObj.preferences.budgetMax = Math.round((userObj.preferences.budgetMax + currentMax) / 2);
+              } else {
+                userObj.preferences.budgetMax = currentMax;
+              }
+              updated = true;
+            }
+
+            if (updated) {
+              await userObj.save();
+            }
+          }
+        }
       } catch (err) {
         console.error('Database query failed:', err);
       }

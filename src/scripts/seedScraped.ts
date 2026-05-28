@@ -35,7 +35,12 @@ const CATEGORY_MAP: { [key: string]: string } = {
 
   // Fashion
   'men_tshirt': 'Fashion',
+  'men_shirt': 'Fashion',
+  'men_jeans': 'Fashion',
+  'men_shorts': 'Fashion',
   'women_dress': 'Fashion',
+  'women_saree': 'Fashion',
+  'women_kurta': 'Fashion',
   'men_shoes': 'Fashion',
   'women_shoes': 'Fashion',
   'backpack': 'Fashion',

@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useChatStore } from '../store/chat';
+import { useChatStore, Message } from '../store/chat';
 import { useProductStore } from '../store/product';
 import { useAuthStore } from '../store/auth';
+import { useCartStore } from '../store/cart';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Clipboard,
   Check,
@@ -23,8 +26,23 @@ import {
   Package,
   Volume2,
   VolumeX,
+  Volume1,
   Languages,
   Loader2,
+  Plus,
+  Trash2,
+  Menu,
+  LogOut,
+  Sun,
+  Moon,
+  PanelLeftClose,
+  PanelLeft,
+  PanelRightClose,
+  PanelRight,
+  ShoppingCart,
+  Eye,
+  Star,
+  ShoppingBag,
 } from 'lucide-react';
 import { useIsMounted } from '../hooks/useIsMounted';
 
@@ -50,7 +68,7 @@ const SUPPORTED_LANGS = [
   { code: 'pa-IN', label: 'ਪੰ' },
 ];
 
-// ─── Fuzzy / synonym map for common misspellings and related terms ───────────
+// ─── Synonym map for common misspellings and related terms ───────────────────
 const SYNONYM_MAP: Record<string, string[]> = {
   'mobile': ['phone', 'smartphone', 'cellphone', 'iphone', 'android', 'mobail', 'mobil', 'fone', 'phon'],
   'laptop': ['computer', 'notebook', 'laptoop', 'leptop', 'pc', 'laaptop', 'computar'],
@@ -77,14 +95,12 @@ function detectScript(text: string): string {
   if (/[\u0D00-\u0D7F]/.test(text)) return 'ml-IN'; // Malayalam
   if (/[\u0A00-\u0A7F]/.test(text)) return 'pa-IN'; // Punjabi
   return 'en-IN';
-};
+}
 
 // ─── Normalize query: fix common misspellings & expand synonyms ──────────────
 function normalizeQuery(query: string): string {
   let normalized = query.toLowerCase().trim();
-  // Remove extra spaces
   normalized = normalized.replace(/\s+/g, ' ');
-  // Common phonetic corrections for Indian accent misspellings
   const corrections: [RegExp, any][] = [
     [/\bfone\b/g, 'phone'],
     [/\bphon\b/g, 'phone'],
@@ -121,7 +137,7 @@ function normalizeQuery(query: string): string {
     [/\brupees\b/g, '₹'],
     [/\brupiya\b/g, '₹'],
     [/\brs\b/g, '₹'],
-    [/\bk\b(?=\s*\d|\d)/g, '000'], // 15k → 15000
+    [/\bk\b(?=\s*\d|\d)/g, '000'],
     [/(\d+)\s*k\b/g, (m: any, n: any) => String(parseInt(n) * 1000)],
     [/(\d+)\s*lakh\b/g, (m: any, n: any) => String(parseInt(n) * 100000)],
     [/(\d+)\s*lac\b/g, (m: any, n: any) => String(parseInt(n) * 100000)],
@@ -132,72 +148,13 @@ function normalizeQuery(query: string): string {
   return normalized;
 }
 
-// ─── Build enhanced system prompt ────────────────────────────────────────────
-function buildSystemPrompt(): string {
-  return `You are Nuvix AI, a supreme shopping assistant for an Indian e-commerce platform. You are expert at understanding customer needs even with:
-- Spelling mistakes (mobail = mobile, leptop = laptop, hedfone = headphone, shrit = shirt)
-- Hindi/Indian language words mixed in (sasta = cheap, mehnga = expensive, accha = good)
-- Vague descriptions ("woh wala phone" = that phone, "gaming wala" = gaming)
-- Price in different formats (15k = 15000, 2 lakh = 200000, rs 500 = ₹500)
-- Partial names and abbreviations (AC = air conditioner, TV = television)
-- Related/similar products (shirt → also include t-shirt, kurta; shoes → also sneakers, sandals)
-
-SYNONYM EXPANSIONS you must apply:
-- shirt/shrt → include t-shirt, polo, kurta
-- phone/mobile/fone → smartphone category
-- laptop/leptop/computer → laptop category
-- headphone/earbud/airpod → headphones category
-- shoes/chappal/sandal → footwear category
-- watch/ghadi → watches category
-
-Your job is to extract structured search parameters AND respond in the SAME LANGUAGE the user used.
-
-You MUST respond with valid JSON only (no markdown, no explanation outside JSON):
-{
-  "queryType": "product search" | "general question" | "greeting" | "comparison",
-  "detectedLanguage": "en" | "hi" | "ta" | "te" | "mr" | "bn" | "gu" | "kn" | "ml" | "pa",
-  "generalAnswer": "string (only for general/greeting/comparison queries, respond in detected language)",
-  "confidence": 0.0-1.0,
-  "searchParams": {
-    "query": "normalized english search terms with synonyms expanded",
-    "category": "electronics|clothing|footwear|appliances|accessories|beauty|sports|home|auto",
-    "price_min": number_or_0,
-    "price_max": number_or_0,
-    "brand": "brand name or empty",
-    "color": "color or empty",
-    "features": ["feature1", "feature2"],
-    "rating": number_or_0,
-    "sort": "price_asc|price_desc|rating|newest|popular",
-    "fuzzy_terms": ["alternative search terms for fuzzy matching"]
-  }
-}
-
-Examples:
-- "15k ke andar accha smartphone chahiye" → query:"smartphone", price_max:15000, category:"electronics"
-- "saste gaming wale laptop" → query:"gaming laptop", sort:"price_asc", category:"electronics"  
-- "lal rang ka shirt" → query:"shirt t-shirt kurta", color:"red", category:"clothing"
-- "noise cancelling headfone under 5000" → query:"headphone earphone", features:["noise cancelling"], price_max:5000
-- "best camera under 2 lakh" → query:"camera dslr mirrorless", price_max:200000, sort:"rating"
-
-IMPORTANT: For clothing searches, ALWAYS expand to related items. For shirt, include t-shirt, polo, kurta in fuzzy_terms. Never return empty results intent — always find the closest match.`;
-}
-
 // ─── Types ──────────────────────────────────────────────────────────────────
 type SearchParams = Record<string, string | number | string[]>;
-
-interface ChatMessage {
-  sender: 'user' | 'ai';
-  content: string;
-  type?: 'text' | 'search';
-  searchParams?: SearchParams;
-  resultCount?: number;
-  language?: string;
-}
 
 // ─── Typing indicator ────────────────────────────────────────────────────────
 function TypingDots() {
   return (
-    <div className="nv-typing-dots" aria-label="AI is typing">
+    <div className="nv-typing-dots" aria-label="AI is thinking">
       <span /><span /><span />
     </div>
   );
@@ -235,24 +192,15 @@ function SearchCard({ params, query, loading }: { params: SearchParams; query: s
     <div className="nv-search-card">
       <div className="nv-search-card__header">
         <div className="nv-search-card__icon-wrap"><Search size={13} /></div>
-        <div>
-          <p className="nv-search-card__title">Searching catalog</p>
-          <p className="nv-search-card__query">"{query}"</p>
+        <div className="min-w-0 flex-1">
+          <p className="nv-search-card__title">Searching Nuvix Catalog</p>
+          <p className="nv-search-card__query" title={query}>"{query}"</p>
         </div>
         {loading ? (
-          <div className="nv-search-card__spinner" />
+          <div className="nv-search-card__spinner animate-spin" />
         ) : (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '16px',
-            height: '16px',
-            borderRadius: '50%',
-            backgroundColor: '#ecfdf5',
-            border: '1px solid #10b981',
-          }}>
-            <Check size={9} color="#10b981" strokeWidth={3} />
+          <div className="nv-search-card__checked-badge">
+            <Check size={9} strokeWidth={3} />
           </div>
         )}
       </div>
@@ -269,12 +217,13 @@ function SearchCard({ params, query, loading }: { params: SearchParams; query: s
       <div className="nv-search-card__footer">
         {loading ? (
           <>
-            <Package size={10} /><span>Fetching matching products…</span>
+            <Package size={10} className="animate-pulse" />
+            <span>Fetching matching products…</span>
           </>
         ) : (
           <>
-            <Check size={10} color="#10b981" />
-            <span style={{ color: '#10b981', fontWeight: 500 }}>Search completed</span>
+            <Check size={10} className="text-emerald-500" />
+            <span style={{ color: '#10b981', fontWeight: 600 }}>Query executed successfully</span>
           </>
         )}
       </div>
@@ -284,22 +233,71 @@ function SearchCard({ params, query, loading }: { params: SearchParams; query: s
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 function MessageBubble({
-  message, index, isCopied, onCopy, onSpeak, isSpeaking, loading,
+  message, index, isCopied, onCopy, onSpeak, isSpeaking, loading, onAddToCart,
 }: {
-  message: ChatMessage; index: number; isCopied: boolean;
+  message: Message; index: number; isCopied: boolean;
   onCopy: (text: string, i: number) => void;
   onSpeak: (text: string, lang: string) => void;
   isSpeaking: boolean;
   loading: boolean;
+  onAddToCart: (p: any) => void;
 }) {
   const isUser = message.sender === 'user';
   const isSearch = message.type === 'search' && message.searchParams;
 
   return (
-    <div className={`nv-msg-row ${isUser ? 'nv-msg-row--user' : 'nv-msg-row--ai'}`}>
-      {!isUser && <div className="nv-msg-avatar nv-msg-avatar--ai"><Bot size={12} /></div>}
+    <div className={`nv-msg-row ${isUser ? 'nv-msg-row--user animate-slide-right' : 'nv-msg-row--ai animate-slide-left'}`}>
+      {!isUser && (
+        <div className="nv-msg-avatar nv-msg-avatar--ai glow-brand">
+          <Sparkles size={13} className="text-cyan-200" />
+        </div>
+      )}
       {isSearch ? (
-        <SearchCard params={message.searchParams!} query={message.content} loading={loading} />
+        <div className="nv-search-card-wrapper">
+          <SearchCard params={message.searchParams!} query={message.content} loading={loading} />
+          
+          {/* Snapped horizontal product carousel directly inside message bubble */}
+          {message.products && message.products.length > 0 && (
+            <div className="nv-inline-carousel-wrapper animate-fade-up">
+              <div className="nv-inline-carousel scrollbar-hide">
+                {message.products.map((p: any) => {
+                  const originalPrice = Math.floor(p.price * 1.38);
+                  const discount = Math.round(((originalPrice - p.price) / originalPrice) * 100);
+                  return (
+                    <div key={p._id} className="nv-carousel-card surface surface-hover">
+                      <div className="nv-carousel-card__img-wrap">
+                        <img src={p.images[0] || '/placeholder.png'} alt={p.name} className="nv-carousel-card__img" loading="lazy" />
+                        <span className="nv-carousel-card__discount">{discount}% OFF</span>
+                      </div>
+                      <div className="nv-carousel-card__content">
+                        <h4 className="nv-carousel-card__title" title={p.name}>{p.name}</h4>
+                        <div className="nv-carousel-card__price-row">
+                          <span className="nv-carousel-card__price">₹{p.price.toLocaleString('en-IN')}</span>
+                          <span className="nv-carousel-card__price-old">₹{originalPrice.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="nv-carousel-card__actions">
+                          <button 
+                            onClick={() => onAddToCart(p)}
+                            className="nv-carousel-card__btn nv-carousel-card__btn--buy"
+                          >
+                            <ShoppingCart size={9} />
+                            <span>Add</span>
+                          </button>
+                          <Link 
+                            href={`/products/${p._id}`}
+                            className="nv-carousel-card__btn nv-carousel-card__btn--view"
+                          >
+                            <Eye size={10} />
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
         <div className={`nv-msg-bubble ${isUser ? 'nv-msg-bubble--user' : 'nv-msg-bubble--ai'}`}>
           <p className="nv-msg-text">{message.content}</p>
@@ -318,23 +316,47 @@ function MessageBubble({
               className="nv-action-btn"
               onClick={() => onCopy(message.content, index)}
               aria-label={isCopied ? 'Copied!' : 'Copy message'}
+              title="Copy"
             >
               {isCopied ? <Check size={9} className="nv-copy-icon--done" /> : <Clipboard size={9} />}
             </button>
           </div>
         </div>
       )}
-      {isUser && <div className="nv-msg-avatar nv-msg-avatar--user"><User size={12} /></div>}
+      {isUser && <div className="nv-msg-avatar nv-msg-avatar--user"><User size={13} /></div>}
     </div>
   );
 }
 
+// ChatMessage type replaced by imported Message type from store
+
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 export default function MainLayout({ children }: { children: React.ReactNode }) {
-  const { conversations, inputValue, addMessage, setInputValue } = useChatStore() as any;
-  const { user } = useAuthStore();
+  const { 
+    threads, 
+    activeThreadId, 
+    inputValue, 
+    addMessage, 
+    setInputValue, 
+    createThread, 
+    switchThread, 
+    deleteThread,
+    updateActiveThreadProducts,
+    clearMessages,
+    sidebarCollapsed,
+    toggleSidebar
+  } = useChatStore();
+  const { user, logout } = useAuthStore();
+  const { addToCart } = useCartStore();
   const userKey = user?.email || 'anonymous';
-  const messages = conversations[userKey] || [{ sender: 'ai', content: 'Hi there! What are you looking for today?' }];
+
+  // Load threads
+  const currentThreads = threads[userKey] || [];
+  const activeId = activeThreadId[userKey];
+  const activeThread = currentThreads.find((t) => t.id === activeId) || currentThreads[0];
+  const messages = activeThread ? activeThread.messages : ([{ sender: 'ai', content: 'Hi there! What are you looking for today?' }] as Message[]);
+  
   const { setProducts, setSearchQuery } = useProductStore();
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -356,14 +378,70 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const [transcript, setTranscript] = useState('');
   const [processingVoice, setProcessingVoice] = useState(false);
 
-  const isMounted = useIsMounted();
+  // Expanded layouts & ratios
+  const [showShelf, setShowShelf] = useState(true);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [prevProductCount, setPrevProductCount] = useState(0);
 
-  // Auto-scroll
+  // ChatGPT-style Continuous Voice Conversation Overlay states
+  const [isVoiceConvOpen, setIsVoiceConvOpen] = useState(false);
+  const [voiceConvState, setVoiceConvState] = useState<'listening' | 'thinking' | 'speaking' | 'paused'>('listening');
+  const [voiceConvTranscript, setVoiceConvTranscript] = useState('');
+
+  const isMounted = useIsMounted();
+  const router = useRouter();
+
+  // Initialize theme tracking
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isDark = document.documentElement.classList.contains('dark');
+      setTheme(isDark ? 'dark' : 'light');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(nextTheme);
+    if (nextTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  };
+
+  // Auto-create thread if none exists on load
+  useEffect(() => {
+    if (currentThreads.length === 0) {
+      createThread(userKey);
+    }
+  }, [userKey, currentThreads.length, createThread]);
+
+  // Sync right shelf products when active thread changes
+  useEffect(() => {
+    if (activeThread) {
+      setProducts(activeThread.products || []);
+    } else {
+      setProducts([]);
+    }
+  }, [activeThread?.id]);
+
+  // Slide open Right Shelf automatically when new product searches complete
+  useEffect(() => {
+    const activeProducts = activeThread?.products || [];
+    if (activeProducts.length > prevProductCount && activeProducts.length > 0) {
+      setShowShelf(true);
+    }
+    setPrevProductCount(activeProducts.length);
+  }, [activeThread?.products]);
+
+  // Auto-scroll chat
   useEffect(() => {
     chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, isThinking, isMobileChatOpen]);
 
-  // Init voice + TTS
+  // Speech service initialization
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -374,7 +452,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  // Build recognition instance per language
   const buildRecognition = useCallback((lang: string) => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return null;
@@ -404,7 +481,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     return rec;
   }, [selectedLang, isVoiceMode, setInputValue]);
 
-  // Auto-send after voice in voice-mode
   useEffect(() => {
     if (processingVoice && inputValue.trim()) {
       setProcessingVoice(false);
@@ -447,6 +523,218 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     setTimeout(() => setCopiedIndex(null), 2000);
   }, []);
 
+  // ─── Multi-thread Thread Handlers ──────────────────────────────────────────
+  const handleNewChat = () => {
+    createThread(userKey);
+    setProducts([]);
+    stopSpeaking();
+  };
+
+  const handleSwitchThread = (id: string) => {
+    switchThread(id, userKey);
+    const targetThread = currentThreads.find((t) => t.id === id);
+    if (targetThread) {
+      setProducts(targetThread.products || []);
+    } else {
+      setProducts([]);
+    }
+    stopSpeaking();
+  };
+
+  const handleDeleteThread = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    deleteThread(id, userKey);
+    setTimeout(() => {
+      const remainingThreads = useChatStore.getState().threads[userKey] || [];
+      const newActiveId = useChatStore.getState().activeThreadId[userKey];
+      const newActiveThread = remainingThreads.find(t => t.id === newActiveId);
+      if (newActiveThread) {
+        setProducts(newActiveThread.products || []);
+      } else {
+        setProducts([]);
+      }
+    }, 50);
+  };
+
+  // ─── ChatGPT-style Continuous Voice Conversation Loop Logic ─────────────────
+  const startVoiceConversation = () => {
+    setIsVoiceConvOpen(true);
+    setVoiceConvState('listening');
+    setVoiceConvTranscript('');
+    stopSpeaking();
+    setIsVoiceMode(true); // Engages auto-speech synthesis responses
+
+    // Trigger continuous recording loop after brief mount
+    setTimeout(() => {
+      triggerVoiceConvListen();
+    }, 400);
+  };
+
+  const triggerVoiceConvListen = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+
+    stopSpeaking();
+    const rec = new SR();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = selectedLang;
+
+    rec.onstart = () => {
+      setVoiceConvState('listening');
+      setVoiceConvTranscript('');
+    };
+
+    rec.onresult = (e: any) => {
+      let interim = '';
+      let final = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += t;
+        else interim += t;
+      }
+      setVoiceConvTranscript(final || interim);
+    };
+
+    rec.onerror = (err: any) => {
+      console.error('Continuous voice loop error:', err);
+    };
+
+    rec.onend = () => {
+      const finalQuery = voiceConvTranscript.trim();
+      // If user spoke something, compile and send to search API
+      if (finalQuery) {
+        setVoiceConvState('thinking');
+        handleSendVoiceConvMessage(finalQuery);
+      } else {
+        // If user remained silent, check overlay state and restart listening
+        if (useChatStore.getState().isOpen !== undefined) {
+          setTimeout(() => {
+            triggerVoiceConvListen();
+          }, 1200);
+        }
+      }
+    };
+
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+    } catch {}
+  };
+
+  const handleSendVoiceConvMessage = async (text: string) => {
+    if (!text.trim() || isThinking) return;
+
+    const normalizedQuery = normalizeQuery(text);
+    const detectedLang = detectScript(text);
+
+    addMessage({ sender: 'user', content: text, type: 'text', language: detectedLang }, userKey);
+    setIsThinking(true);
+
+    try {
+      const activeMsgs = useChatStore.getState().threads[userKey]?.find(t => t.id === useChatStore.getState().activeThreadId[userKey])?.messages || [];
+      const rawHistory = activeMsgs.map((m: any) => ({
+        sender: m.sender,
+        content: m.content,
+        type: m.type || 'text'
+      }));
+
+      const aiRes = await fetch('/api/ai-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: text,
+          normalizedQuery,
+          lang: detectedLang,
+          userId: user?._id || null,
+          history: rawHistory
+        }),
+      });
+
+      if (aiRes.ok) {
+        const d = await aiRes.json();
+        const qType = (d.queryType || '').toLowerCase();
+        const respLang = d.detectedLanguage || detectedLang.split('-')[0];
+        const fullLang = respLang + '-IN';
+
+        let answer = '';
+        if (qType.includes('general') || qType.includes('greeting') || qType.includes('comparison')) {
+          answer = d.generalAnswer || 'I found some information for you.';
+          addMessage({ sender: 'ai', content: answer, type: 'text', language: fullLang }, userKey);
+        } else {
+          const sp = d.searchParams || {};
+          const products = d.products || [];
+          setProducts(products);
+          setSearchQuery('');
+
+          updateActiveThreadProducts(products, userKey);
+          addMessage({ sender: 'ai', content: text, type: 'search', searchParams: sp, products, language: fullLang }, userKey);
+
+          answer = d.generalAnswer || `I discovered ${products.length} matching products in the Nuvix catalog.`;
+          addMessage({ sender: 'ai', content: answer, type: 'text', language: fullLang }, userKey);
+        }
+
+        // Advance to speaking synthesis
+        setVoiceConvState('speaking');
+        setVoiceConvTranscript(answer);
+        speakVoiceConvResponse(answer, fullLang);
+      } else {
+        const err = 'Sorry, Nuvix AI had trouble handling that request.';
+        addMessage({ sender: 'ai', content: err, type: 'text' }, userKey);
+        setVoiceConvState('speaking');
+        setVoiceConvTranscript(err);
+        speakVoiceConvResponse(err, 'en-IN');
+      }
+    } catch {
+      const err = 'Network connection dropped. Please try again.';
+      addMessage({ sender: 'ai', content: err, type: 'text' }, userKey);
+      setVoiceConvState('speaking');
+      setVoiceConvTranscript(err);
+      speakVoiceConvResponse(err, 'en-IN');
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  const speakVoiceConvResponse = (text: string, lang: string) => {
+    if (!ttsSupported || !synthRef.current) return;
+
+    synthRef.current.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = lang.includes('-') ? lang : lang + '-IN';
+    utt.rate = 0.95;
+    utt.pitch = 1.0;
+
+    utt.onend = () => {
+      // Loop back to continuous hands-free listening!
+      setVoiceConvState('listening');
+      setVoiceConvTranscript('');
+      triggerVoiceConvListen();
+    };
+
+    utt.onerror = () => {
+      setVoiceConvState('listening');
+      setVoiceConvTranscript('');
+      triggerVoiceConvListen();
+    };
+
+    utteranceRef.current = utt;
+    synthRef.current.speak(utt);
+  };
+
+  const endVoiceConversation = () => {
+    stopSpeaking();
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+      } catch {}
+    }
+    setIsVoiceConvOpen(false);
+    setVoiceConvTranscript('');
+    setIsVoiceMode(false);
+  };
+
   // ─── Core send logic ────────────────────────────────────────────────────────
   const handleSendMessage = useCallback(async (textToSend?: string) => {
     const rawQuery = textToSend || inputValue;
@@ -460,7 +748,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     setIsThinking(true);
 
     try {
-      // Call the secure, supremely intelligent backend route directly to bypass CORS
+      const activeMsgs = useChatStore.getState().threads[userKey]?.find(t => t.id === useChatStore.getState().activeThreadId[userKey])?.messages || [];
+      const rawHistory = activeMsgs.map((m: any) => ({
+        sender: m.sender,
+        content: m.content,
+        type: m.type || 'text'
+      }));
+
       const aiRes = await fetch('/api/ai-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -468,7 +762,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           query: rawQuery,
           normalizedQuery,
           lang: detectedLang,
-          userId: user?._id || null
+          userId: user?._id || null,
+          history: rawHistory
         }),
       });
 
@@ -482,20 +777,19 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           const answer = d.generalAnswer || 'I can help you find products. What are you looking for?';
           addMessage({ sender: 'ai', content: answer, type: 'text', language: fullLang }, userKey);
 
-          // Auto-speak in voice mode
           if (isVoiceMode && ttsSupported) {
             setTimeout(() => speakMessage(answer, fullLang), 300);
           }
         } else {
           // Product search
           const sp = d.searchParams || {};
-          addMessage({ sender: 'ai', content: rawQuery, type: 'search', searchParams: sp, language: fullLang }, userKey);
-
           const products = d.products || [];
           setProducts(products);
           setSearchQuery('');
+          
+          updateActiveThreadProducts(products, userKey);
+          addMessage({ sender: 'ai', content: rawQuery, type: 'search', searchParams: sp, products, language: fullLang }, userKey);
 
-          // Voice-friendly conversational answer
           const answer = d.generalAnswer || `Found ${products.length} products for you.`;
           addMessage({ sender: 'ai', content: answer, type: 'text', language: fullLang }, userKey);
 
@@ -517,375 +811,1719 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   if (!isMounted) return null;
 
-  // ─── Sub-components ──────────────────────────────────────────────────────────
-  const renderPanelHeader = (onClose?: () => void) => (
-    <div className="nv-panel-header">
-      <div className="nv-panel-header__glow" />
-      <div className="nv-panel-header__left">
-        <div className="nv-status-orb"><span className="nv-status-orb__ring" /></div>
-        <div>
-          <div className="nv-panel-header__title">
-            <Sparkles size={12} className="nv-sparkle-icon" />
-            <span>Nuvix AI</span>
-          </div>
-          <div className="nv-panel-header__sub">Co-Shopper · Active</div>
-        </div>
-      </div>
-      <div className="nv-panel-header__right">
-        {/* Language indicator */}
-        <div className="nv-lang-indicator" title="Detected language">
-          <Languages size={9} />
-          <span>{SUPPORTED_LANGS.find(l => l.code === selectedLang)?.label || 'EN'}</span>
-        </div>
-        <div className="nv-model-badge"><Zap size={9} /><span>v3</span></div>
-        {onClose && (
-          <button className="nv-close-btn" onClick={onClose} aria-label="Close chat"><X size={16} /></button>
-        )}
-      </div>
-    </div>
-  );
+  const isNewChat = messages.length <= 1;
 
-  const renderMessageList = () => (
-    <div ref={chatContainerRef} className="nv-messages" role="log" aria-live="polite">
-      {messages.length === 0 && (
-        <div className="nv-empty-state">
-          <div className="nv-empty-state__icon"><Bot size={22} /></div>
-          <p className="nv-empty-state__title">What can I find for you?</p>
-          <p className="nv-empty-state__sub">Ask in English, Hindi, Tamil, Telugu, or any Indian language. Spelling mistakes are fine!</p>
-          <div className="nv-lang-pills">
-            {['हिंदी', 'தமிழ்', 'తెలుగు', 'मराठी', 'বাংলা'].map(l => (
-              <span key={l} className="nv-lang-pill">{l}</span>
-            ))}
-          </div>
-        </div>
-      )}
-      {messages.map((msg: ChatMessage, i: number) => (
-        <MessageBubble
-          key={i} message={msg} index={i}
-          isCopied={copiedIndex === i}
-          onCopy={handleCopy}
-          onSpeak={(text, lang) => speakMessage(text, lang, i)}
-          isSpeaking={speakingIndex === i}
-          loading={i === messages.length - 1 && isThinking}
-        />
-      ))}
-      {isThinking && (
-        <div className="nv-msg-row nv-msg-row--ai">
-          <div className="nv-msg-avatar nv-msg-avatar--ai"><Bot size={12} /></div>
-          <div className="nv-msg-bubble nv-msg-bubble--ai nv-msg-bubble--thinking"><TypingDots /></div>
-        </div>
-      )}
-    </div>
-  );
-
-  const renderInputFooter = () => (
-    <div className="nv-footer">
-      {/* Suggestion chips */}
-      <div className="nv-chips" role="group" aria-label="Quick suggestions">
-        {SUGGESTION_CHIPS.map((chip, i) => (
-          <button key={i} className="nv-chip" onClick={() => handleSendMessage(chip.query)} disabled={isThinking}>
-            <span className="nv-chip__icon">{chip.icon}</span>
-            <span>{chip.text}</span>
-            <ChevronRight size={9} className="nv-chip__arrow" />
-          </button>
-        ))}
+  // ─── Rendering segments ─────────────────────────────────────────────────────
+  const renderSidebar = () => (
+    <div className="nv-sidebar__inner">
+      {/* Top Brand Logo */}
+      <div className="nv-sidebar__logo-area">
+        <Sparkles size={16} className="text-indigo-400 dark:text-indigo-300 animate-sparkle" />
+        <span className="nv-sidebar__logo-text font-black tracking-widest uppercase">Nuvix AI</span>
       </div>
 
-      {/* Voice mode toggle */}
-      {voiceSupported && (
-        <div className="nv-voice-mode-bar">
-          <button
-            className={`nv-voice-mode-btn${isVoiceMode ? ' nv-voice-mode-btn--active' : ''}`}
-            onClick={() => { setIsVoiceMode(v => !v); if (speakingIndex !== null) stopSpeaking(); }}
-          >
-            {isVoiceMode ? <Volume2 size={11} /> : <VolumeX size={11} />}
-            <span>{isVoiceMode ? 'Voice Mode ON — tap mic to speak' : 'Enable Voice Mode'}</span>
-          </button>
+      {/* Glowing New Chat Trigger */}
+      <button 
+        onClick={handleNewChat}
+        className="nv-sidebar__new-chat-btn animate-pulse-soft"
+        title="Start a fresh shopping session"
+      >
+        <Plus size={14} />
+        <span>New Chat</span>
+      </button>
 
-          {/* Language picker */}
-          <div className="nv-lang-picker-wrap">
-            <button className="nv-lang-picker-btn" onClick={() => setShowLangPicker(p => !p)}>
-              <Languages size={11} />
-              <span>{SUPPORTED_LANGS.find(l => l.code === selectedLang)?.label}</span>
-            </button>
-            {showLangPicker && (
-              <div className="nv-lang-dropdown">
-                {SUPPORTED_LANGS.map(l => (
-                  <button
-                    key={l.code}
-                    className={`nv-lang-option${selectedLang === l.code ? ' nv-lang-option--active' : ''}`}
-                    onClick={() => { setSelectedLang(l.code); setShowLangPicker(false); }}
+      {/* Saved Conversations list */}
+      <div className="nv-sidebar__threads scrollbar-hide">
+        <div className="nv-sidebar__threads-label">Previous Chats</div>
+        {currentThreads.length === 0 ? (
+          <div className="nv-sidebar__threads-empty">No active threads</div>
+        ) : (
+          <div className="nv-sidebar__threads-list">
+            {currentThreads.map((t) => {
+              const isActive = t.id === activeThread?.id;
+              return (
+                <div 
+                  key={t.id}
+                  onClick={() => handleSwitchThread(t.id)}
+                  className={`nv-sidebar__thread-item group ${isActive ? 'nv-sidebar__thread-item--active' : ''}`}
+                >
+                  <MessageCircle size={13} className="nv-thread-icon" />
+                  <span className="nv-thread-title">{t.title}</span>
+                  <button 
+                    onClick={(e) => handleDeleteThread(e, t.id)}
+                    className="nv-thread-delete-btn"
+                    title="Delete conversation"
                   >
-                    {l.label}
+                    <Trash2 size={11} />
                   </button>
-                ))}
-              </div>
-            )}
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
-
-      {/* Composer */}
-      <div className={`nv-composer${isListening ? ' nv-composer--listening' : ''}`}>
-        {voiceSupported && (
-          <button
-            className={`nv-voice-btn${isListening ? ' nv-voice-btn--active' : ''}`}
-            onClick={startListening}
-            aria-label={isListening ? 'Stop listening' : 'Start voice input'}
-          >
-            {isListening ? <MicOff size={14} /> : <Mic size={14} />}
-            {isListening && <span className="nv-voice-ring" />}
-          </button>
         )}
-
-        <div className="nv-input-wrap">
-          {isListening && transcript && (
-            <span className="nv-interim-text">{transcript}</span>
-          )}
-          {isListening && !transcript && (
-            <span className="nv-listening-badge">Listening…</span>
-          )}
-          {processingVoice && (
-            <span className="nv-listening-badge"><Loader2 size={10} className="nv-spin-icon" /> Processing…</span>
-          )}
-          <Input
-            ref={inputRef}
-            type="text"
-            className="nv-input"
-            placeholder={isListening ? '' : 'Ask in any language… (mobail, leptop, sasta)'}
-            value={isListening ? '' : inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-            disabled={isThinking || isListening}
-            aria-label="Chat input"
-          />
-        </div>
-
-        <button
-          className="nv-send-btn"
-          onClick={() => handleSendMessage()}
-          disabled={(!inputValue.trim() && !transcript) || isThinking}
-          aria-label="Send message"
-        >
-          <Send size={14} />
-        </button>
       </div>
 
-      <p className="nv-footer__note">Supports 10+ Indian languages · Spelling mistakes OK · AI results may vary</p>
+      {/* Bottom User Card */}
+      <div className="nv-sidebar__footer">
+        <div className="nv-sidebar__profile">
+          <div className="nv-profile-avatar">
+            {user?.name?.charAt(0).toUpperCase() || 'A'}
+          </div>
+          <div className="nv-profile-info min-w-0">
+            <div className="nv-profile-name truncate">{user?.name || 'Shopper'}</div>
+            <div className="nv-profile-email truncate">{user?.email || 'Guest Mode'}</div>
+          </div>
+        </div>
+
+        {/* Action button row */}
+        <div className="nv-sidebar__actions">
+          <button 
+            onClick={toggleTheme}
+            className="nv-sidebar__action-btn"
+            title={theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+          >
+            {theme === 'light' ? <Moon size={13} /> : <Sun size={13} />}
+          </button>
+          
+          {user && (
+            <button 
+              onClick={() => { logout(); router.push('/login'); }}
+              className="nv-sidebar__action-btn nv-sidebar__action-btn--logout"
+              title="Logout"
+            >
+              <LogOut size={13} />
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <>
       <style>{`
-        :root {
-          --nv-bg:          #f4f6fb;
-          --nv-panel-bg:    #ffffff;
-          --nv-border:      rgba(99,102,241,0.10);
-          --nv-border-md:   rgba(99,102,241,0.18);
-          --nv-brand:       #4f46e5;
-          --nv-brand-mid:   #6366f1;
-          --nv-brand-light: #818cf8;
-          --nv-cyan:        #06b6d4;
-          --nv-emerald:     #10b981;
-          --nv-red:         #ef4444;
-          --nv-text-1:      #0f172a;
-          --nv-text-2:      #475569;
-          --nv-text-3:      #94a3b8;
-          --nv-shadow-sm:   0 1px 4px rgba(79,70,229,0.06), 0 4px 16px rgba(79,70,229,0.06);
-          --nv-shadow-md:   0 4px 24px rgba(79,70,229,0.10), 0 1px 4px rgba(0,0,0,0.04);
-          --nv-shadow-panel:0 8px 48px rgba(79,70,229,0.12), 0 2px 8px rgba(0,0,0,0.06);
-          --nv-radius:      14px;
-          --nv-radius-sm:   8px;
-          --nv-radius-full: 999px;
-          --nv-font-body:   'DM Sans', 'Instrument Sans', system-ui, sans-serif;
-          --nv-transition:  all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        /* Immerse fullpage dashboard wrapper */
+        .nv-root {
+          display: flex;
+          height: calc(100vh - 60px);
+          overflow: hidden;
+          background: var(--nv-bg);
+          font-family: var(--nv-font-body);
+          position: relative;
         }
-        .dark {
-          --nv-bg:          #07091a;
-          --nv-panel-bg:    #0d1027;
-          --nv-border:      rgba(99,102,241,0.12);
-          --nv-border-md:   rgba(99,102,241,0.22);
-          --nv-text-1:      #f1f5f9;
-          --nv-text-2:      #94a3b8;
-          --nv-text-3:      #475569;
-          --nv-shadow-panel:0 8px 48px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
+
+        /* Immersion: hide landing footer when inside the smart workspace */
+        .nv-root ~ footer, body:has(.nv-root) footer {
+          display: none !important;
         }
-        .nv-root { display:flex; flex-direction:column; height:calc(100vh - 68px); overflow:hidden; background:var(--nv-bg); font-family:var(--nv-font-body); }
-        @media(min-width:1024px){.nv-root{flex-direction:row;}}
-        .nv-panel { display:none; flex-direction:column; width:320px; background:var(--nv-panel-bg); border-right:1px solid var(--nv-border); box-shadow:var(--nv-shadow-panel); position:relative; overflow:hidden; flex-shrink:0; }
-        @media(min-width:1024px){.nv-panel{display:flex;}}
-        @media(min-width:1280px){.nv-panel{width:390px;}}
-        .nv-panel::before { content:''; position:absolute; inset:0; background-image:linear-gradient(rgba(99,102,241,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.03) 1px,transparent 1px); background-size:32px 32px; pointer-events:none; z-index:0; }
 
-        /* Header */
-        .nv-panel-header { position:relative; display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--nv-border); background:linear-gradient(135deg,var(--nv-brand) 0%,#7c3aed 50%,var(--nv-cyan) 100%); flex-shrink:0; z-index:1; }
-        .nv-panel-header__glow { position:absolute; inset:0; background:radial-gradient(ellipse at 50% -20%,rgba(255,255,255,0.15) 0%,transparent 65%); pointer-events:none; }
-        .nv-panel-header__left { display:flex; align-items:center; gap:10px; position:relative; }
-        .nv-panel-header__title { display:flex; align-items:center; gap:5px; font-size:13px; font-weight:700; color:#fff; letter-spacing:0.03em; }
-        .nv-sparkle-icon { color:#a5f3fc; animation:nv-sparkle 2.5s ease-in-out infinite; }
-        @keyframes nv-sparkle { 0%,100%{opacity:1;transform:scale(1) rotate(0deg);}50%{opacity:0.7;transform:scale(1.15) rotate(15deg);} }
-        .nv-panel-header__sub { font-size:9px; font-weight:600; color:rgba(255,255,255,0.65); letter-spacing:0.08em; text-transform:uppercase; margin-top:1px; }
-        .nv-panel-header__right { display:flex; align-items:center; gap:6px; position:relative; }
-        .nv-lang-indicator { display:flex; align-items:center; gap:3px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.2); border-radius:var(--nv-radius-full); padding:3px 7px; font-size:9px; font-weight:700; color:rgba(255,255,255,0.9); }
-        .nv-model-badge { display:flex; align-items:center; gap:3px; background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.2); border-radius:var(--nv-radius-full); padding:3px 8px; font-size:9px; font-weight:700; color:rgba(255,255,255,0.9); letter-spacing:0.06em; text-transform:uppercase; }
-        .nv-close-btn { background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.18); border-radius:var(--nv-radius-sm); color:#fff; width:30px; height:30px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:var(--nv-transition); }
-        .nv-close-btn:hover { background:rgba(255,255,255,0.22); }
+        /* ── Theme Adaptable Left Sidebar (ChatGPT-style) ── */
+        .nv-sidebar {
+          width: 260px;
+          background: #f8fafc;
+          border-right: 1px solid var(--border);
+          display: flex;
+          flex-direction: column;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          z-index: 30;
+          flex-shrink: 0;
+          height: 100%;
+        }
+        
+        /* Dark mode override for Left Sidebar */
+        .dark .nv-sidebar {
+          background: #080916;
+          border-right: 1px solid rgba(255, 255, 255, 0.05);
+        }
 
-        /* Status orb */
-        .nv-status-orb { position:relative; width:8px; height:8px; background:#34d399; border-radius:50%; box-shadow:0 0 6px #34d399; }
-        .nv-status-orb__ring { position:absolute; inset:-3px; border-radius:50%; border:1.5px solid rgba(52,211,153,0.5); animation:nv-pulse-ring 2s ease-out infinite; }
-        @keyframes nv-pulse-ring { 0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(2.2);} }
+        .nv-sidebar--collapsed {
+          width: 0px;
+          transform: translateX(-260px);
+          opacity: 0;
+          border-right: none;
+        }
+        .nv-sidebar__inner {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          padding: 16px;
+          box-sizing: border-box;
+          overflow: hidden;
+        }
+        .nv-sidebar__logo-area {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 18px;
+          padding: 0 4px;
+        }
+        .nv-sidebar__logo-text {
+          font-size: 11px;
+          font-weight: 900;
+          color: var(--foreground);
+          letter-spacing: 0.1em;
+          background: linear-gradient(90deg, var(--nv-indigo-light), var(--nv-indigo));
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .dark .nv-sidebar__logo-text {
+          background: linear-gradient(90deg, #a5f3fc, #818cf8);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .nv-sidebar__new-chat-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          padding: 10px;
+          border-radius: 12px;
+          border: 1px solid rgba(79, 70, 229, 0.2);
+          background: rgba(79, 70, 229, 0.04);
+          color: var(--nv-indigo);
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          margin-bottom: 20px;
+        }
+        .dark .nv-sidebar__new-chat-btn {
+          border: 1px solid rgba(129, 140, 248, 0.25);
+          background: rgba(129, 140, 248, 0.04);
+          color: #818cf8;
+        }
+        .nv-sidebar__new-chat-btn:hover {
+          background: rgba(79, 70, 229, 0.08);
+          border-color: var(--nv-indigo);
+          transform: translateY(-1px);
+        }
+        .dark .nv-sidebar__new-chat-btn:hover {
+          background: rgba(129, 140, 248, 0.08);
+          border-color: #818cf8;
+        }
+        .nv-sidebar__threads {
+          flex: 1;
+          overflow-y: auto;
+          margin-bottom: 16px;
+          display: flex;
+          flex-direction: column;
+        }
+        .nv-sidebar__threads-label {
+          font-size: 9px;
+          font-weight: 800;
+          color: var(--muted-foreground);
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          margin-bottom: 8px;
+          padding: 0 4px;
+        }
+        .dark .nv-sidebar__threads-label {
+          color: rgba(255, 255, 255, 0.3);
+        }
+        .nv-sidebar__threads-empty {
+          font-size: 10px;
+          color: var(--muted-foreground);
+          text-align: center;
+          padding: 20px 0;
+        }
+        .nv-sidebar__threads-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .nv-sidebar__thread-item {
+          display: flex;
+          align-items: center;
+          padding: 9px 12px;
+          border-radius: 10px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          color: var(--text-2);
+          position: relative;
+          overflow: hidden;
+        }
+        .dark .nv-sidebar__thread-item {
+          color: rgba(255, 255, 255, 0.6);
+        }
+        .nv-sidebar__thread-item:hover {
+          background: var(--secondary);
+          color: var(--foreground);
+        }
+        .dark .nv-sidebar__thread-item:hover {
+          background: rgba(255, 255, 255, 0.03);
+          color: #fff;
+        }
+        .nv-sidebar__thread-item--active {
+          background: rgba(79, 70, 229, 0.07) !important;
+          border: 1px solid rgba(79, 70, 229, 0.2);
+          color: var(--nv-indigo) !important;
+          font-weight: 700;
+        }
+        .dark .nv-sidebar__thread-item--active {
+          background: rgba(79, 70, 229, 0.15) !important;
+          border: 1px solid rgba(79, 70, 229, 0.3);
+          color: #818cf8 !important;
+        }
+        .nv-thread-icon {
+          margin-right: 8px;
+          flex-shrink: 0;
+        }
+        .nv-thread-title {
+          font-size: 11px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          flex-1;
+          margin-right: 16px;
+        }
+        .nv-thread-delete-btn {
+          position: absolute;
+          right: 8px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: transparent;
+          border: none;
+          color: var(--muted-foreground);
+          cursor: pointer;
+          opacity: 0;
+          transition: all 0.15s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 5px;
+        }
+        .dark .nv-thread-delete-btn {
+          color: rgba(255, 255, 255, 0.25);
+        }
+        .nv-sidebar__thread-item:hover .nv-thread-delete-btn {
+          opacity: 1;
+        }
+        .nv-thread-delete-btn:hover {
+          color: #ef4444 !important;
+          background: rgba(239, 68, 68, 0.12);
+        }
+        .nv-sidebar__footer {
+          border-top: 1px solid var(--border);
+          padding-top: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .dark .nv-sidebar__footer {
+          border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .nv-sidebar__profile {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 0 4px;
+        }
+        .nv-profile-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #4f46e5, #06b6d4);
+          color: #fff;
+          font-size: 12px;
+          font-weight: 900;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 8px rgba(79, 70, 229, 0.35);
+        }
+        .nv-profile-name {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--foreground);
+        }
+        .dark .nv-profile-name {
+          color: #fff;
+        }
+        .nv-profile-email {
+          font-size: 9px;
+          color: var(--muted-foreground);
+          margin-top: 1px;
+        }
+        .dark .nv-profile-email {
+          color: rgba(255, 255, 255, 0.35);
+        }
+        .nv-sidebar__actions {
+          display: flex;
+          gap: 6px;
+        }
+        .nv-sidebar__action-btn {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 28px;
+          border-radius: 8px;
+          background: var(--secondary);
+          border: 1px solid var(--border);
+          color: var(--muted-foreground);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .dark .nv-sidebar__action-btn {
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          color: rgba(255, 255, 255, 0.5);
+        }
+        .nv-sidebar__action-btn:hover {
+          background: var(--accent);
+          color: var(--foreground);
+        }
+        .dark .nv-sidebar__action-btn:hover {
+          background: rgba(255, 255, 255, 0.06);
+          color: #fff;
+        }
+        .nv-sidebar__action-btn--logout:hover {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: rgba(239, 68, 68, 0.2);
+          color: #ef4444;
+        }
 
-        /* Messages */
-        .nv-messages { flex:1; overflow-y:auto; padding:20px 14px; display:flex; flex-direction:column; gap:12px; position:relative; z-index:1; scroll-behavior:smooth; }
-        .nv-messages::-webkit-scrollbar { width:3px; }
-        .nv-messages::-webkit-scrollbar-thumb { background:var(--nv-border-md); border-radius:var(--nv-radius-full); }
+        /* ── Exact Split Screen Ratios: 40% Chat Console and 60% Shelf Shelf ── */
+        @media(min-width: 1024px) {
+          .nv-chat-console {
+            width: 40% !important;
+            flex: none !important;
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          }
+          .nv-product-shelf {
+            width: 60% !important;
+            flex: none !important;
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          }
+          /* Smoothly expand to full screen when shelf is collapsed */
+          .nv-chat-console--shelf-collapsed {
+            width: 100% !important;
+          }
+        }
 
-        /* Empty state */
-        .nv-empty-state { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; text-align:center; opacity:0; animation:nv-fade-up 0.5s 0.1s forwards; }
-        .nv-empty-state__icon { width:52px; height:52px; border-radius:16px; background:linear-gradient(135deg,rgba(79,70,229,0.1),rgba(6,182,212,0.1)); border:1px solid var(--nv-border-md); display:flex; align-items:center; justify-content:center; color:var(--nv-brand-light); margin-bottom:14px; }
-        .nv-empty-state__title { font-size:14px; font-weight:600; color:var(--nv-text-1); margin-bottom:6px; }
-        .nv-empty-state__sub { font-size:11px; color:var(--nv-text-3); line-height:1.6; max-width:220px; margin-bottom:12px; }
-        .nv-lang-pills { display:flex; flex-wrap:wrap; gap:5px; justify-content:center; }
-        .nv-lang-pill { font-size:10px; font-weight:600; color:var(--nv-brand); background:rgba(79,70,229,0.07); border:1px solid var(--nv-border-md); border-radius:var(--nv-radius-full); padding:3px 9px; }
+        /* ── Center Chat Console (Gemini-style) ── */
+        .nv-chat-console {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          background: var(--background);
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          overflow: hidden;
+          height: 100%;
+        }
+        .nv-chat-console-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 20px;
+          border-bottom: 1px solid var(--border);
+          background: var(--card);
+          z-index: 10;
+          height: 52px;
+          box-sizing: border-box;
+        }
+        .nv-chat-header-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .nv-sidebar-toggle-btn {
+          background: transparent;
+          border: none;
+          color: var(--muted-foreground);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          transition: all 0.2s ease;
+        }
+        .nv-sidebar-toggle-btn:hover {
+          background: var(--secondary);
+          color: var(--foreground);
+        }
+        .nv-chat-header-title {
+          font-size: 12px;
+          font-weight: 800;
+          color: var(--foreground);
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+        .nv-chat-header-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .nv-header-action-btn {
+          background: transparent;
+          border: none;
+          color: var(--muted-foreground);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          transition: all 0.2s ease;
+          position: relative;
+        }
+        .nv-header-action-btn:hover {
+          background: var(--secondary);
+          color: var(--foreground);
+        }
+        .nv-header-action-badge {
+          position: absolute;
+          top: -2px;
+          right: -2px;
+          background: var(--nv-indigo);
+          color: #fff;
+          font-size: 8px;
+          font-weight: 800;
+          border-radius: 50%;
+          width: 14px;
+          height: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 1.5px solid var(--card);
+          box-shadow: 0 0 6px rgba(79, 70, 229, 0.4);
+        }
+        
+        /* ── Immersive Welcome View ── */
+        .nv-welcome-screen {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 40px 24px;
+          max-width: 760px;
+          margin: 0 auto;
+          text-align: center;
+          position: relative;
+          z-index: 1;
+        }
+        .nv-welcome-screen__glow-orb {
+          position: absolute;
+          width: 320px;
+          height: 320px;
+          background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
+          filter: blur(40px);
+          pointer-events: none;
+          z-index: -1;
+        }
+        .nv-welcome-screen__logo {
+          width: 56px;
+          height: 56px;
+          border-radius: 18px;
+          background: linear-gradient(135deg, #4f46e5, #06b6d4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          margin: 0 auto 16px;
+          box-shadow: 0 10px 30px rgba(79, 70, 229, 0.35);
+        }
+        .nv-welcome-screen__title {
+          font-size: 22px;
+          font-weight: 900;
+          color: var(--foreground);
+          line-height: 1.3;
+          margin-bottom: 10px;
+          letter-spacing: -0.02em;
+        }
+        .nv-welcome-screen__subtitle {
+          font-size: 12px;
+          color: var(--muted-foreground);
+          line-height: 1.6;
+          max-width: 480px;
+          margin: 0 auto 28px;
+          font-weight: 500;
+        }
+        .nv-welcome-screen__cards {
+          display: grid;
+          grid-template-cols: 1fr;
+          gap: 10px;
+          width: 100%;
+        }
+        @media(min-width: 640px) {
+          .nv-welcome-screen__cards {
+            grid-template-cols: 1fr 1fr;
+          }
+        }
+        .nv-welcome-card {
+          padding: 14px 16px;
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          text-align: left;
+          cursor: pointer;
+          box-shadow: var(--nv-shadow-sm);
+          position: relative;
+        }
+        .nv-welcome-card__icon {
+          font-size: 18px;
+          flex-shrink: 0;
+        }
+        .nv-welcome-card__content {
+          min-w-0;
+          flex: 1;
+        }
+        .nv-welcome-card__title {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--foreground);
+        }
+        .nv-welcome-card__desc {
+          font-size: 9px;
+          color: var(--muted-foreground);
+          margin-top: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .nv-welcome-card__arrow {
+          color: var(--muted-foreground);
+          opacity: 0;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+        }
+        .nv-welcome-card:hover .nv-welcome-card__arrow {
+          opacity: 1;
+          transform: translateX(2px);
+        }
 
-        /* Message row */
-        .nv-msg-row { display:flex; align-items:flex-end; gap:8px; opacity:0; animation:nv-fade-up 0.25s forwards; }
-        .nv-msg-row--user { justify-content:flex-end; }
-        .nv-msg-row--ai { justify-content:flex-start; }
-        @keyframes nv-fade-up { from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);} }
+        /* ── Centered Message Flow ── */
+        .nv-chat-container-wrap {
+          flex: 1;
+          overflow-y: auto;
+          position: relative;
+        }
+        .nv-chat-messages-container {
+          max-width: 760px;
+          margin: 0 auto;
+          padding: 24px 20px 100px;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          box-sizing: border-box;
+        }
 
-        /* Avatars */
-        .nv-msg-avatar { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-bottom:2px; }
-        .nv-msg-avatar--ai { background:linear-gradient(135deg,var(--nv-brand),var(--nv-cyan)); color:#fff; box-shadow:0 2px 8px rgba(79,70,229,0.3); }
-        .nv-msg-avatar--user { background:rgba(79,70,229,0.08); border:1px solid var(--nv-border-md); color:var(--nv-brand-light); }
+        /* Redesign chat bubbles */
+        .nv-msg-row {
+          display: flex;
+          gap: 12px;
+          max-width: 90%;
+        }
+        .nv-msg-row--user {
+          align-self: flex-end;
+          flex-direction: row-reverse;
+        }
+        .nv-msg-row--ai {
+          align-self: flex-start;
+        }
+        .nv-msg-avatar {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          box-shadow: var(--nv-shadow-sm);
+        }
+        .nv-msg-avatar--ai {
+          background: linear-gradient(135deg, #4f46e5, #7c3aed);
+          color: #fff;
+          box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+        }
+        .nv-msg-avatar--user {
+          background: var(--secondary);
+          border: 1px solid var(--border);
+          color: var(--muted-foreground);
+        }
+        .nv-msg-bubble {
+          position: relative;
+          border-radius: 18px;
+          padding: 12px 48px 12px 16px;
+          box-shadow: var(--nv-shadow-sm);
+          min-width: 50px;
+        }
+        .nv-msg-bubble--user {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-top-right-radius: 4px;
+          color: var(--foreground);
+        }
+        .nv-msg-bubble--ai {
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-top-left-radius: 4px;
+          color: var(--foreground);
+        }
+        
+        /* Dark adjustments for AI message bubble */
+        .dark .nv-msg-bubble--ai {
+          background: rgba(255, 255, 255, 0.02);
+          border-color: rgba(255, 255, 255, 0.05);
+        }
 
-        /* Bubbles */
-        .nv-msg-bubble { position:relative; max-width:82%; border-radius:14px; padding:10px 42px 10px 13px; box-shadow:var(--nv-shadow-sm); }
-        .nv-msg-bubble--user { background:var(--nv-panel-bg); border:1px solid var(--nv-border-md); border-bottom-right-radius:4px; color:var(--nv-text-1); }
-        .nv-msg-bubble--ai { background:linear-gradient(135deg,var(--nv-brand) 0%,#5b52f0 60%,#4338ca 100%); border:none; border-bottom-left-radius:4px; color:#fff; box-shadow:0 4px 16px rgba(79,70,229,0.25); }
-        .nv-msg-bubble--thinking { padding:12px 16px; background:linear-gradient(135deg,rgba(79,70,229,0.08),rgba(6,182,212,0.06)); border:1px solid var(--nv-border); box-shadow:none; }
-        .nv-msg-text { font-size:12px; font-weight:500; line-height:1.6; word-break:break-word; }
+        .nv-msg-bubble--thinking {
+          padding: 14px 20px;
+          background: var(--secondary) !important;
+          border: 1px solid var(--border);
+          box-shadow: none;
+        }
+        .nv-msg-text {
+          font-size: 12.5px;
+          font-weight: 500;
+          line-height: 1.6;
+          word-break: break-word;
+        }
+        .nv-bubble-actions {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          display: flex;
+          gap: 4px;
+          opacity: 0;
+          transition: all 0.2s ease;
+        }
+        .nv-msg-bubble:hover .nv-bubble-actions {
+          opacity: 1;
+        }
+        .nv-action-btn {
+          width: 22px;
+          height: 22px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--secondary);
+          border: 1px solid var(--border);
+          color: var(--muted-foreground);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .nv-action-btn:hover {
+          background: var(--accent);
+          color: var(--foreground);
+        }
+        .nv-action-btn--active {
+          background: rgba(16, 185, 129, 0.1);
+          border-color: rgba(16, 185, 129, 0.2);
+          color: #10b981 !important;
+        }
+        .nv-copy-icon--done {
+          color: #10b981;
+        }
 
-        /* Bubble action buttons */
-        .nv-bubble-actions { position:absolute; top:7px; right:7px; display:flex; gap:3px; opacity:0; transition:var(--nv-transition); }
-        .nv-msg-bubble:hover .nv-bubble-actions { opacity:1; }
-        .nv-action-btn { width:20px; height:20px; border-radius:5px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.1); cursor:pointer; transition:var(--nv-transition); color:rgba(255,255,255,0.7); border:none; }
-        .nv-action-btn:hover { background:rgba(255,255,255,0.22); }
-        .nv-action-btn--active { background:rgba(52,211,153,0.2); color:#34d399; }
-        .nv-copy-icon--done { color:#34d399; }
-        .nv-msg-bubble--user .nv-action-btn { color:var(--nv-text-3); }
+        /* ── Inline Product snaps inside chat bubbles ── */
+        .nv-search-card-wrapper {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          max-width: 100%;
+        }
+        .nv-search-card {
+          width: 100%;
+          max-width: 480px;
+          border-radius: 18px;
+          background: var(--card);
+          border: 1px solid var(--border);
+          box-shadow: var(--nv-shadow-md);
+          overflow: hidden;
+        }
+        .nv-search-card__header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 16px;
+          background: linear-gradient(135deg, rgba(79, 70, 229, 0.05), rgba(6, 182, 212, 0.03));
+          border-bottom: 1px solid var(--border);
+        }
+        .nv-search-card__icon-wrap {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: linear-gradient(135deg, #4f46e5, #06b6d4);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+        }
+        .nv-search-card__title {
+          font-size: 10px;
+          font-weight: 800;
+          color: var(--foreground);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .nv-search-card__query {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--nv-indigo);
+          margin-top: 1px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .nv-search-card__spinner {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          border: 2px solid rgba(79, 70, 229, 0.15);
+          border-top-color: var(--nv-indigo);
+          flex-shrink: 0;
+        }
+        .nv-search-card__checked-badge {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background: rgba(16, 185, 129, 0.1);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          color: #10b981;
+          flex-shrink: 0;
+        }
+        .nv-search-card__params {
+          padding: 10px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          border-bottom: 1px solid var(--border);
+        }
+        .nv-search-card__param {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .nv-search-card__param-key {
+          font-size: 9px;
+          font-weight: 800;
+          color: var(--muted-foreground);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          flex-shrink: 0;
+        }
+        .nv-search-card__param-val {
+          font-size: 10.5px;
+          font-weight: 700;
+          color: var(--foreground);
+          text-align: right;
+        }
+        .nv-search-card__footer {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          background: var(--secondary);
+          font-size: 9px;
+          font-weight: 800;
+          color: var(--muted-foreground);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
 
-        /* Typing dots */
-        .nv-typing-dots { display:flex; align-items:center; gap:5px; }
-        .nv-typing-dots span { display:block; width:6px; height:6px; border-radius:50%; background:var(--nv-brand-light); animation:nv-bounce 1.3s ease-in-out infinite; }
-        .nv-typing-dots span:nth-child(2){animation-delay:0.2s;}
-        .nv-typing-dots span:nth-child(3){animation-delay:0.4s;}
-        @keyframes nv-bounce { 0%,60%,100%{transform:translateY(0);opacity:0.5;}30%{transform:translateY(-5px);opacity:1;} }
+        /* ── Inline snappy snap carousel ── */
+        .nv-inline-carousel-wrapper {
+          width: 100%;
+          max-width: 480px;
+          overflow: hidden;
+          margin-top: 4px;
+        }
+        .nv-inline-carousel {
+          display: flex;
+          gap: 10px;
+          overflow-x: auto;
+          scroll-snap-type: x mandatory;
+          padding-bottom: 6px;
+        }
+        .nv-carousel-card {
+          flex-shrink: 0;
+          width: 140px;
+          border-radius: 14px;
+          background: var(--card);
+          border: 1px solid var(--border);
+          box-shadow: var(--nv-shadow-sm);
+          scroll-snap-align: start;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        .nv-carousel-card__img-wrap {
+          height: 100px;
+          background: #f8fafc;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          padding: 10px;
+          border-bottom: 1px solid var(--border);
+        }
+        .dark .nv-carousel-card__img-wrap {
+          background: rgba(255, 255, 255, 0.01);
+        }
+        .nv-carousel-card__img {
+          max-height: 100%;
+          max-width: 100%;
+          object-contain: fit;
+        }
+        .nv-carousel-card__discount {
+          position: absolute;
+          top: 6px;
+          left: 6px;
+          background: #ef4444;
+          color: #fff;
+          font-size: 7px;
+          font-weight: 900;
+          padding: 2px 4px;
+          border-radius: 4px;
+          letter-spacing: 0.02em;
+        }
+        .nv-carousel-card__content {
+          padding: 8px 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          flex: 1;
+        }
+        .nv-carousel-card__title {
+          font-size: 10px;
+          font-weight: 700;
+          color: var(--foreground);
+          line-clamp: 2;
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          line-height: 1.3;
+          height: 26px;
+        }
+        .nv-carousel-card__price-row {
+          display: flex;
+          align-items: baseline;
+          gap: 4px;
+        }
+        .nv-carousel-card__price {
+          font-size: 11px;
+          font-weight: 900;
+          color: var(--foreground);
+        }
+        .nv-carousel-card__price-old {
+          font-size: 8px;
+          color: var(--muted-foreground);
+          text-decoration: line-through;
+        }
+        .nv-carousel-card__actions {
+          display: flex;
+          gap: 4px;
+          margin-top: auto;
+        }
+        .nv-carousel-card__btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 22px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 9px;
+          font-weight: 800;
+          text-transform: uppercase;
+          border: none;
+          transition: all 0.15s ease;
+        }
+        .nv-carousel-card__btn--buy {
+          flex: 1;
+          background: linear-gradient(135deg, var(--nv-indigo), var(--nv-indigo-mid));
+          color: #fff;
+          gap: 3px;
+        }
+        .nv-carousel-card__btn--buy:hover {
+          opacity: 0.9;
+          transform: translateY(-0.5px);
+        }
+        .nv-carousel-card__btn--view {
+          width: 22px;
+          background: var(--secondary);
+          border: 1px solid var(--border);
+          color: var(--muted-foreground);
+        }
+        .nv-carousel-card__btn--view:hover {
+          background: var(--accent);
+          color: var(--foreground);
+        }
 
-        /* Footer */
-        .nv-footer { border-top:1px solid var(--nv-border); background:var(--nv-panel-bg); padding:10px 14px 10px; display:flex; flex-direction:column; gap:8px; flex-shrink:0; position:relative; z-index:1; }
+        /* ── Centered Floating Composer ── */
+        .nv-chat-input-container {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          background: linear-gradient(180deg, transparent 0%, var(--background) 25%);
+          padding: 16px 20px 24px;
+          z-index: 10;
+        }
+        .nv-composer-wrapper {
+          max-width: 760px;
+          margin: 0 auto;
+        }
+        .nv-composer {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: var(--card);
+          border: 1px solid var(--border);
+          box-shadow: var(--nv-shadow-lg);
+          border-radius: 20px;
+          padding: 6px 6px 6px 12px;
+          transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .nv-composer:focus-within {
+          border-color: var(--nv-indigo);
+          box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12), var(--nv-shadow-lg);
+        }
+        .nv-composer--listening {
+          border-color: #ef4444;
+          box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12), var(--nv-shadow-lg);
+        }
+        .nv-voice-btn {
+          position: relative;
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          background: transparent;
+          border: 1px solid var(--border);
+          color: var(--muted-foreground);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+        .nv-voice-btn:hover {
+          background: var(--secondary);
+          color: var(--foreground);
+        }
+        .nv-voice-btn--active {
+          background: rgba(239, 68, 68, 0.1) !important;
+          border-color: rgba(239, 68, 68, 0.3) !important;
+          color: #ef4444 !important;
+          animation: voicePulse 1.2s infinite;
+        }
+        
+        /* Two-Way ChatGPT Headphones Button Style */
+        .nv-headphones-btn {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          background: transparent;
+          border: 1px solid var(--border);
+          color: var(--muted-foreground);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+        .nv-headphones-btn:hover {
+          background: var(--secondary);
+          color: var(--nv-indigo);
+          border-color: rgba(79, 70, 229, 0.3);
+        }
 
-        /* Chips */
-        .nv-chips { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
-        .nv-chips::-webkit-scrollbar{display:none;}
-        .nv-chip { flex-shrink:0; display:flex; align-items:center; gap:5px; padding:5px 10px 5px 8px; border-radius:var(--nv-radius-full); background:rgba(79,70,229,0.06); border:1px solid var(--nv-border-md); font-size:10px; font-weight:600; color:var(--nv-brand); cursor:pointer; transition:var(--nv-transition); white-space:nowrap; }
-        .nv-chip:hover:not(:disabled) { background:rgba(79,70,229,0.12); border-color:var(--nv-brand); transform:translateY(-1px); }
-        .nv-chip:disabled { opacity:0.5; cursor:not-allowed; }
-        .nv-chip__icon { font-size:12px; }
-        .nv-chip__arrow { color:var(--nv-brand-light); transition:transform 0.15s; }
-        .nv-chip:hover .nv-chip__arrow{transform:translateX(2px);}
+        @keyframes voicePulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+          50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+        }
+        .nv-voice-ring {
+          position: absolute;
+          inset: -4px;
+          border: 1.5px solid rgba(239, 68, 68, 0.3);
+          border-radius: 12px;
+          animation: ringGrow 1s infinite linear;
+        }
+        @keyframes ringGrow {
+          from { transform: scale(1); opacity: 1; }
+          to { transform: scale(1.4); opacity: 0; }
+        }
+        .nv-input-wrap {
+          flex: 1;
+          position: relative;
+          overflow: hidden;
+        }
+        .nv-input {
+          width: 100%;
+          border: none !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          font-size: 13px !important;
+          font-weight: 500;
+          color: var(--foreground);
+          height: 36px;
+          padding: 0 !important;
+          outline: none;
+        }
+        .nv-input::placeholder {
+          color: var(--muted-foreground);
+          opacity: 0.75;
+        }
+        .nv-listening-badge {
+          position: absolute;
+          left: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 11px;
+          font-weight: 700;
+          color: #ef4444;
+          pointer-events: none;
+          animation: blink 1.2s infinite;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .nv-interim-text {
+          position: absolute;
+          left: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--muted-foreground);
+          pointer-events: none;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        }
+        .nv-lang-picker-wrap {
+          position: relative;
+        }
+        .nv-lang-picker-btn {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 6px 10px;
+          border-radius: 8px;
+          background: var(--secondary);
+          border: 1px solid var(--border);
+          font-size: 10px;
+          font-weight: 800;
+          color: var(--nv-indigo);
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .nv-lang-picker-btn:hover {
+          background: var(--accent);
+        }
+        .nv-lang-dropdown {
+          position: absolute;
+          bottom: calc(100% + 8px);
+          right: 0;
+          background: var(--card);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 6px;
+          box-shadow: var(--nv-shadow-lg);
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          width: 170px;
+          z-index: 25;
+        }
+        .nv-lang-option {
+          padding: 4px 8px;
+          border-radius: 6px;
+          font-size: 10.5px;
+          font-weight: 700;
+          color: var(--muted-foreground);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .nv-lang-option:hover {
+          background: var(--secondary);
+          color: var(--foreground);
+        }
+        .nv-lang-option--active {
+          background: rgba(79, 70, 229, 0.1) !important;
+          color: var(--nv-indigo) !important;
+        }
+        .nv-send-btn {
+          width: 36px;
+          height: 36px;
+          border-radius: 12px;
+          background: linear-gradient(135deg, var(--nv-indigo), #7c3aed);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          border: none;
+          box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+        }
+        .nv-send-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(79, 70, 229, 0.45);
+        }
+        .nv-send-btn:active:not(:disabled) {
+          transform: scale(0.96);
+        }
+        .nv-send-btn:disabled {
+          opacity: 0.35;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        .nv-footer__note {
+          font-size: 9px;
+          color: var(--muted-foreground);
+          text-align: center;
+          margin-top: 6px;
+          opacity: 0.7;
+        }
 
-        /* Voice mode bar */
-        .nv-voice-mode-bar { display:flex; align-items:center; justify-content:space-between; gap:6px; }
-        .nv-voice-mode-btn { flex:1; display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:var(--nv-radius-sm); background:rgba(79,70,229,0.05); border:1px solid var(--nv-border-md); font-size:10px; font-weight:600; color:var(--nv-text-2); cursor:pointer; transition:var(--nv-transition); }
-        .nv-voice-mode-btn--active { background:rgba(16,185,129,0.08); border-color:rgba(16,185,129,0.3); color:var(--nv-emerald); }
-        .nv-voice-mode-btn:hover { background:rgba(79,70,229,0.1); }
+        /* ── Right Collapsible Product Shelf (Catalog Shelf) ── */
+        .nv-product-shelf {
+          width: 420px;
+          background: var(--card);
+          border-left: 1px solid var(--border);
+          display: flex;
+          flex-direction: column;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          flex-shrink: 0;
+          position: relative;
+          z-index: 20;
+          height: 100%;
+        }
+        .nv-product-shelf--closed {
+          width: 0px;
+          transform: translateX(420px);
+          opacity: 0;
+          border-left: none;
+        }
+        .nv-shelf-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 12px 18px;
+          border-bottom: 1px solid var(--border);
+          background: var(--card);
+          height: 52px;
+          box-sizing: border-box;
+        }
+        .nv-shelf-header__left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .nv-shelf-header__title {
+          font-size: 11px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          color: var(--foreground);
+        }
+        .nv-shelf-header__badge {
+          font-size: 9px;
+          font-weight: 800;
+          background: rgba(16, 185, 129, 0.08);
+          border: 1px solid rgba(16, 185, 129, 0.25);
+          color: #10b981;
+          padding: 2px 7px;
+          border-radius: var(--radius-full);
+          text-transform: uppercase;
+        }
+        .nv-shelf-header__right {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .nv-shelf-close-btn {
+          background: transparent;
+          border: none;
+          color: var(--muted-foreground);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: 5px;
+          transition: all 0.2s ease;
+        }
+        .nv-shelf-close-btn:hover {
+          background: var(--secondary);
+          color: var(--foreground);
+        }
+        .nv-shelf-content {
+          flex: 1;
+          overflow-y: auto;
+          height: 100%;
+        }
 
-        /* Lang picker */
-        .nv-lang-picker-wrap { position:relative; }
-        .nv-lang-picker-btn { display:flex; align-items:center; gap:4px; padding:6px 10px; border-radius:var(--nv-radius-sm); background:rgba(79,70,229,0.05); border:1px solid var(--nv-border-md); font-size:10px; font-weight:700; color:var(--nv-brand); cursor:pointer; transition:var(--nv-transition); }
-        .nv-lang-picker-btn:hover { background:rgba(79,70,229,0.1); }
-        .nv-lang-dropdown { position:absolute; bottom:calc(100% + 6px); right:0; background:var(--nv-panel-bg); border:1px solid var(--nv-border-md); border-radius:var(--nv-radius-sm); padding:4px; box-shadow:var(--nv-shadow-md); display:flex; flex-wrap:wrap; gap:3px; width:160px; z-index:20; }
-        .nv-lang-option { padding:4px 8px; border-radius:5px; font-size:11px; font-weight:600; color:var(--nv-text-2); background:transparent; border:none; cursor:pointer; transition:var(--nv-transition); }
-        .nv-lang-option:hover { background:rgba(79,70,229,0.07); color:var(--nv-brand); }
-        .nv-lang-option--active { background:rgba(79,70,229,0.12); color:var(--nv-brand); }
+        /* ── Mobile Drawer and triggers ── */
+        .nv-fab {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          z-index: 40;
+          display: flex;
+        }
+        @media(min-width: 1024px) {
+          .nv-fab {
+            display: none;
+          }
+        }
+        .nv-fab__btn {
+          width: 56px;
+          height: 56px;
+          border-radius: 18px;
+          background: linear-gradient(135deg, var(--nv-indigo) 0%, #7c3aed 50%, var(--nv-cyan) 100%);
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          box-shadow: 0 8px 32px rgba(79, 70, 229, 0.45);
+          border: none;
+          transition: all 0.2s ease;
+        }
+        .nv-fab__btn:hover {
+          transform: scale(1.06);
+        }
+        .nv-fab__badge {
+          position: absolute;
+          top: -4px;
+          right: -4px;
+          background: var(--nv-cyan);
+          color: #0f172a;
+          font-size: 8px;
+          font-weight: 800;
+          border-radius: var(--radius-full);
+          padding: 2px 5px;
+          border: 2px solid var(--nv-bg);
+          text-transform: uppercase;
+        }
+        .nv-drawer-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(7, 9, 26, 0.65);
+          backdrop-filter: blur(6px);
+          z-index: 50;
+          display: flex;
+          align-items: flex-end;
+        }
+        @media(min-width: 1024px) {
+          .nv-drawer-backdrop {
+            display: none;
+          }
+        }
+        .nv-drawer {
+          width: 100%;
+          background: var(--card);
+          border-top: 1px solid var(--border);
+          border-radius: 20px 20px 0 0;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          height: 85vh;
+          box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.15);
+          animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        .nv-drawer__handle {
+          width: 36px;
+          height: 4px;
+          background: var(--border);
+          border-radius: var(--radius-full);
+          margin: 10px auto 0;
+          flex-shrink: 0;
+        }
 
-        /* Composer */
-        .nv-composer { display:flex; align-items:center; gap:8px; background:rgba(79,70,229,0.04); border:1px solid var(--nv-border-md); border-radius:var(--nv-radius); padding:5px 5px 5px 8px; transition:var(--nv-transition); }
-        .nv-composer:focus-within { border-color:var(--nv-brand); box-shadow:0 0 0 3px rgba(79,70,229,0.1); }
-        .nv-composer--listening { border-color:rgba(239,68,68,0.4); box-shadow:0 0 0 3px rgba(239,68,68,0.08); }
+        /* ── ChatGPT Two-Way Voice Loop Overlay Panel ── */
+        .nv-voice-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 100;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: radial-gradient(circle at center, rgba(13, 16, 39, 0.97) 0%, rgba(7, 9, 26, 0.99) 100%);
+          backdrop-filter: blur(24px);
+          -webkit-backdrop-filter: blur(24px);
+          color: #fff;
+          animation: fadeIn 0.3s ease-out forwards;
+        }
+        .nv-voice-orb-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          width: 260px;
+          height: 260px;
+          margin-bottom: 40px;
+        }
+        
+        /* Glowing waves behind the voice conversation orb */
+        .nv-voice-wave-ring {
+          position: absolute;
+          border-radius: 50%;
+          border: 1.5px solid rgba(99, 102, 241, 0.15);
+          animation: ringGrow 2.5s infinite linear;
+          pointer-events: none;
+        }
+        .nv-voice-wave-ring:nth-child(1) { width: 160px; height: 160px; animation-delay: 0s; }
+        .nv-voice-wave-ring:nth-child(2) { width: 210px; height: 210px; animation-delay: 0.8s; }
+        .nv-voice-wave-ring:nth-child(3) { width: 260px; height: 260px; animation-delay: 1.6s; }
 
-        /* Voice button */
-        .nv-voice-btn { position:relative; width:32px; height:32px; border-radius:var(--nv-radius-sm); background:transparent; border:1px solid var(--nv-border-md); color:var(--nv-text-2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:var(--nv-transition); }
-        .nv-voice-btn:hover { background:rgba(79,70,229,0.07); color:var(--nv-brand); }
-        .nv-voice-btn--active { background:rgba(239,68,68,0.1); border-color:rgba(239,68,68,0.4); color:var(--nv-red); animation:nv-voice-pulse 1.2s ease-in-out infinite; }
-        @keyframes nv-voice-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.3);}50%{box-shadow:0 0 0 5px rgba(239,68,68,0);} }
-        .nv-voice-ring { position:absolute; inset:-4px; border:1.5px solid rgba(239,68,68,0.35); border-radius:10px; animation:nv-ring-expand 1s ease-out infinite; }
-        @keyframes nv-ring-expand { from{opacity:1;transform:scale(1);}to{opacity:0;transform:scale(1.5);} }
+        /* The central pulsing orb */
+        .nv-voice-orb {
+          width: 110px;
+          height: 110px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, var(--nv-indigo) 0%, #7c3aed 50%, var(--nv-cyan) 100%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 0 40px rgba(99, 102, 241, 0.6);
+          position: relative;
+          z-index: 10;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+        
+        /* Pulse orb depending on loop state */
+        .nv-voice-orb--listening {
+          animation: orbPulseListening 1.6s infinite ease-in-out;
+          box-shadow: 0 0 40px rgba(16, 185, 129, 0.5);
+          background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+        }
+        .nv-voice-orb--thinking {
+          animation: orbSpinThinking 1.4s infinite linear;
+          box-shadow: 0 0 40px rgba(124, 58, 237, 0.6);
+        }
+        .nv-voice-orb--speaking {
+          animation: orbPulseSpeaking 1.1s infinite ease-in-out;
+          box-shadow: 0 0 50px rgba(244, 114, 182, 0.6);
+          background: linear-gradient(135deg, #7c3aed 0%, #f472b6 100%);
+        }
+        
+        @keyframes orbPulseListening {
+          0%, 100% { transform: scale(1); box-shadow: 0 0 30px rgba(16, 185, 129, 0.4); }
+          50% { transform: scale(1.08); box-shadow: 0 0 50px rgba(16, 185, 129, 0.7); }
+        }
+        @keyframes orbSpinThinking {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes orbPulseSpeaking {
+          0%, 100% { transform: scale(1) translateY(0); box-shadow: 0 0 30px rgba(244, 114, 182, 0.4); }
+          50% { transform: scale(1.12) translateY(-4px); box-shadow: 0 0 60px rgba(244, 114, 182, 0.8); }
+        }
 
-        /* Input */
-        .nv-input-wrap { flex:1; position:relative; overflow:hidden; }
-        .nv-listening-badge { position:absolute; left:0; top:50%; transform:translateY(-50%); font-size:10px; font-weight:600; color:var(--nv-red); pointer-events:none; animation:nv-blink 1s ease-in-out infinite; display:flex; align-items:center; gap:4px; }
-        .nv-interim-text { position:absolute; left:0; top:50%; transform:translateY(-50%); font-size:11px; font-weight:500; color:var(--nv-text-2); pointer-events:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
-        @keyframes nv-blink { 0%,100%{opacity:1;}50%{opacity:0.5;} }
-        .nv-spin-icon { animation:nv-spin 0.7s linear infinite; }
-        @keyframes nv-spin { to{transform:rotate(360deg);} }
-        .nv-input { width:100%; border:none!important; background:transparent!important; box-shadow:none!important; font-size:12px!important; font-weight:500; color:var(--nv-text-1); height:32px; padding:0!important; outline:none; }
-        .nv-input::placeholder { color:var(--nv-text-3); font-size:11px; }
+        .nv-voice-conv-status {
+          font-size: 10px;
+          font-weight: 800;
+          color: var(--nv-cyan);
+          text-transform: uppercase;
+          letter-spacing: 0.15em;
+          margin-bottom: 12px;
+        }
+        .nv-voice-conv-status--listening { color: #34d399; }
+        .nv-voice-conv-status--thinking { color: #a78bfa; }
+        .nv-voice-conv-status--speaking { color: #f472b6; }
 
-        /* Send button */
-        .nv-send-btn { width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg,var(--nv-brand),var(--nv-brand-mid)); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:var(--nv-transition); border:none; box-shadow:0 2px 8px rgba(79,70,229,0.35); }
-        .nv-send-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 4px 14px rgba(79,70,229,0.4); }
-        .nv-send-btn:active:not(:disabled) { transform:scale(0.95); }
-        .nv-send-btn:disabled { opacity:0.4; cursor:not-allowed; box-shadow:none; }
+        .nv-voice-conv-text {
+          font-size: 16px;
+          font-weight: 500;
+          color: #f1f5f9;
+          text-align: center;
+          line-height: 1.6;
+          max-width: 440px;
+          min-height: 54px;
+          padding: 0 20px;
+          margin-bottom: 60px;
+          word-break: break-word;
+        }
+        
+        .nv-voice-conv-text--thinking {
+          opacity: 0.65;
+          font-style: italic;
+        }
 
-        /* Footer note */
-        .nv-footer__note { font-size:9px; color:var(--nv-text-3); text-align:center; letter-spacing:0.02em; }
+        .nv-voice-conv-close-btn {
+          width: 52px;
+          height: 52px;
+          border-radius: 50%;
+          background: #ef4444;
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          border: none;
+          transition: all 0.2s ease;
+          box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+        }
+        .nv-voice-conv-close-btn:hover {
+          background: #dc2626;
+          transform: scale(1.08);
+          box-shadow: 0 8px 24px rgba(239, 68, 68, 0.5);
+        }
+        .nv-voice-conv-close-btn:active {
+          transform: scale(0.95);
+        }
 
-        /* Content */
-        .nv-content { flex:1; overflow-y:auto; padding:20px 16px; background:var(--nv-bg); }
-        @media(min-width:1024px){.nv-content{padding:28px;}}
-
-        /* FAB */
-        .nv-fab { position:fixed; bottom:24px; right:24px; z-index:40; display:flex; }
-        @media(min-width:1024px){.nv-fab{display:none;}}
-        .nv-fab__btn { position:relative; width:56px; height:56px; border-radius:18px; background:linear-gradient(135deg,var(--nv-brand) 0%,#7c3aed 50%,var(--nv-cyan) 100%); color:#fff; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 32px rgba(79,70,229,0.45); transition:var(--nv-transition); border:none; }
-        .nv-fab__btn:hover { transform:scale(1.06); }
-        .nv-fab__badge { position:absolute; top:-4px; right:-4px; background:var(--nv-cyan); color:#0f172a; font-size:8px; font-weight:800; border-radius:var(--nv-radius-full); padding:2px 5px; border:2px solid var(--nv-bg); letter-spacing:0.05em; text-transform:uppercase; }
-
-        /* Drawer */
-        .nv-drawer-backdrop { position:fixed; inset:0; background:rgba(7,9,26,0.65); backdrop-filter:blur(6px); z-index:50; display:flex; align-items:flex-end; }
-        @media(min-width:1024px){.nv-drawer-backdrop{display:none;}}
-        .nv-drawer { position:relative; width:100%; background:var(--nv-panel-bg); border-radius:20px 20px 0 0; border-top:1px solid var(--nv-border-md); overflow:hidden; display:flex; flex-direction:column; height:85vh; box-shadow:0 -12px 48px rgba(79,70,229,0.15); animation:nv-slide-up 0.3s cubic-bezier(0.16,1,0.3,1); }
-        @keyframes nv-slide-up { from{transform:translateY(100%);opacity:0.5;}to{transform:translateY(0);opacity:1;} }
-        .nv-drawer__handle { width:36px; height:4px; background:var(--nv-border-md); border-radius:var(--nv-radius-full); margin:10px auto 0; flex-shrink:0; }
-
-        /* Search card */
-        .nv-search-card { max-width:90%; border-radius:14px; border-bottom-left-radius:4px; overflow:hidden; background:var(--nv-panel-bg); border:1px solid var(--nv-border-md); box-shadow:var(--nv-shadow-md); opacity:0; animation:nv-fade-up 0.25s forwards; }
-        .nv-search-card__header { display:flex; align-items:center; gap:10px; padding:11px 13px 10px; background:linear-gradient(135deg,rgba(79,70,229,0.07) 0%,rgba(6,182,212,0.04) 100%); border-bottom:1px solid var(--nv-border); }
-        .nv-search-card__icon-wrap { width:28px; height:28px; border-radius:8px; background:linear-gradient(135deg,var(--nv-brand),var(--nv-brand-mid)); color:#fff; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 8px rgba(79,70,229,0.3); }
-        .nv-search-card__title { font-size:11px; font-weight:700; color:var(--nv-text-1); margin:0; }
-        .nv-search-card__query { font-size:10px; color:var(--nv-brand); font-weight:600; margin:1px 0 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px; }
-        .nv-search-card__spinner { margin-left:auto; width:16px; height:16px; border-radius:50%; border:2px solid rgba(79,70,229,0.15); border-top-color:var(--nv-brand); animation:nv-spin 0.7s linear infinite; flex-shrink:0; }
-        .nv-search-card__params { padding:9px 13px; display:flex; flex-direction:column; gap:5px; }
-        .nv-search-card__param { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
-        .nv-search-card__param-key { font-size:10px; font-weight:600; color:var(--nv-text-3); white-space:nowrap; text-transform:uppercase; letter-spacing:0.05em; flex-shrink:0; }
-        .nv-search-card__param-val { font-size:11px; font-weight:600; color:var(--nv-text-1); text-align:right; word-break:break-word; }
-        .nv-search-card__footer { display:flex; align-items:center; gap:6px; padding:7px 13px; background:rgba(79,70,229,0.04); border-top:1px solid var(--nv-border); font-size:9px; font-weight:600; color:var(--nv-text-3); letter-spacing:0.04em; text-transform:uppercase; }
+        /* Responsive displays */
+        @media(max-width: 1023px) {
+          .nv-sidebar {
+            display: none;
+          }
+          .nv-chat-console {
+            display: none;
+          }
+          .nv-product-shelf {
+            width: 100% !important;
+            border-left: none;
+          }
+        }
       `}</style>
 
       <div className="nv-root">
-        <aside className="nv-panel" role="complementary" aria-label="AI shopping assistant">
-          {renderPanelHeader()}
-          {renderMessageList()}
-          {renderInputFooter()}
+        {/* ── Left Sidebar (Chat History, New Chat) ── */}
+        <aside className={`nv-sidebar ${sidebarCollapsed ? 'nv-sidebar--collapsed' : ''}`} role="complementary" aria-label="Conversation History">
+          {renderSidebar()}
         </aside>
 
-        <main className="nv-content" id="main-content">{children}</main>
+        {/* ── Center Chat Console (Wide ChatGPT/Gemini Stream) ── */}
+        <section className={`nv-chat-console ${sidebarCollapsed ? 'nv-chat-console--sidebar-collapsed' : ''} ${!showShelf ? 'nv-chat-console--shelf-collapsed' : ''}`} role="main" aria-label="Nuvix AI Conversation Console">
+          {/* Header */}
+          <div className="nv-chat-console-header">
+            <div className="nv-chat-header-left">
+              <button 
+                onClick={toggleSidebar}
+                className="nv-sidebar-toggle-btn"
+                title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              >
+                {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+              <div className="nv-chat-header-title">{activeThread?.title || 'New Shopping Chat'}</div>
+            </div>
+            
+            <div className="nv-chat-header-right">
+              {/* Reset Thread Action */}
+              <button 
+                onClick={() => clearMessages(userKey)}
+                className="nv-header-action-btn"
+                title="Clear active thread messages"
+              >
+                <Plus size={16} />
+              </button>
+              
+              {/* Product Shelf Toggle Button with animated badge indicator */}
+              <button 
+                onClick={() => setShowShelf(prev => !prev)}
+                className={`nv-header-action-btn`}
+                title={showShelf ? "Hide Catalog" : "View Catalog"}
+              >
+                {showShelf ? <PanelRightClose size={16} /> : <PanelRight size={16} />}
+                {activeThread?.products && activeThread.products.length > 0 && (
+                  <span className="nv-header-action-badge animate-pulse">{activeThread.products.length}</span>
+                )}
+              </button>
+            </div>
+          </div>
 
+          {/* Conversation Path */}
+          <div className="nv-chat-container-wrap">
+            {isNewChat ? (
+              <div className="nv-welcome-screen">
+                <div className="nv-welcome-screen__glow-orb" />
+                <div className="nv-welcome-screen__header animate-fade-down">
+                  <div className="nv-welcome-screen__logo glow-brand">
+                    <Sparkles size={24} className="text-cyan-200 animate-sparkle" />
+                  </div>
+                  <h2 className="nv-welcome-screen__title">
+                    Where style meets <span className="gradient-brand-text font-black">conversational commerce.</span>
+                  </h2>
+                  <p className="nv-welcome-screen__subtitle">
+                    I'm Nuvix AI, your intelligent shopping companion. Describe what you're looking for, compare options, and manage your cart dynamically.
+                  </p>
+                </div>
+
+                <div className="nv-welcome-screen__cards animate-fade-up">
+                  {SUGGESTION_CHIPS.map((chip, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSendMessage(chip.query)}
+                      className="nv-welcome-card surface surface-hover"
+                      style={{ animationDelay: `${idx * 0.05}s` }}
+                    >
+                      <div className="nv-welcome-card__icon">{chip.icon}</div>
+                      <div className="nv-welcome-card__content">
+                        <h4 className="nv-welcome-card__title">{chip.text}</h4>
+                        <p className="nv-welcome-card__desc">Search "{chip.query}"</p>
+                      </div>
+                      <ChevronRight size={13} className="nv-welcome-card__arrow" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div ref={chatContainerRef} className="nv-chat-messages-container" role="log" aria-live="polite">
+                {messages.map((msg: Message, i: number) => (
+                  <MessageBubble
+                    key={i}
+                    message={msg}
+                    index={i}
+                    isCopied={copiedIndex === i}
+                    onCopy={handleCopy}
+                    onSpeak={(text, lang) => speakMessage(text, lang, i)}
+                    isSpeaking={speakingIndex === i}
+                    loading={i === messages.length - 1 && isThinking}
+                    onAddToCart={addToCart}
+                  />
+                ))}
+                {isThinking && (
+                  <div className="nv-msg-row nv-msg-row--ai animate-slide-left">
+                    <div className="nv-msg-avatar nv-msg-avatar--ai glow-brand"><Sparkles size={13} className="text-cyan-200" /></div>
+                    <div className="nv-msg-bubble nv-msg-bubble--ai nv-msg-bubble--thinking"><TypingDots /></div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Floating Composer Area */}
+          <div className="nv-chat-input-container">
+            <div className="nv-composer-wrapper">
+              <div className={`nv-composer ${isListening ? 'nv-composer--listening' : ''}`}>
+                
+                {/* 🎧 ChatGPT-style Continuous Two-Way Voice Mode button */}
+                {ttsSupported && voiceSupported && (
+                  <button 
+                    onClick={startVoiceConversation}
+                    className="nv-headphones-btn"
+                    title="Start hands-free voice companion (ChatGPT Voice Mode)"
+                  >
+                    <Volume1 size={15} />
+                  </button>
+                )}
+
+                {voiceSupported && (
+                  <button
+                    className={`nv-voice-btn ${isListening ? 'nv-voice-btn--active' : ''}`}
+                    onClick={startListening}
+                    aria-label={isListening ? 'Stop listening' : 'Start voice input'}
+                    title="Voice input"
+                  >
+                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                    {isListening && <span className="nv-voice-ring" />}
+                  </button>
+                )}
+
+                <div className="nv-input-wrap">
+                  {isListening && transcript && (
+                    <span className="nv-interim-text">{transcript}</span>
+                  )}
+                  {isListening && !transcript && (
+                    <span className="nv-listening-badge">Listening…</span>
+                  )}
+                  {processingVoice && (
+                    <span className="nv-listening-badge">
+                      <Loader2 size={12} className="nv-spin-icon" /> Processing…
+                    </span>
+                  )}
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    className="nv-input animate-fade-in"
+                    placeholder={isListening ? '' : 'Ask in any language… (e.g. men shirt under 1500, smartwatches)'}
+                    value={isListening ? '' : inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    disabled={isThinking || isListening}
+                    aria-label="Chat input"
+                  />
+                </div>
+
+                {/* Language Picker Badge */}
+                {voiceSupported && (
+                  <div className="nv-lang-picker-wrap">
+                    <button className="nv-lang-picker-btn" onClick={() => setShowLangPicker(p => !p)}>
+                      <Languages size={13} />
+                      <span>{SUPPORTED_LANGS.find(l => l.code === selectedLang)?.label}</span>
+                    </button>
+                    {showLangPicker && (
+                      <div className="nv-lang-dropdown scrollbar-hide">
+                        {SUPPORTED_LANGS.map(l => (
+                          <button
+                            key={l.code}
+                            className={`nv-lang-option ${selectedLang === l.code ? 'nv-lang-option--active' : ''}`}
+                            onClick={() => { setSelectedLang(l.code); setShowLangPicker(false); }}
+                          >
+                            {l.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  className="nv-send-btn"
+                  onClick={() => handleSendMessage()}
+                  disabled={(!inputValue.trim() && !transcript) || isThinking}
+                  aria-label="Send message"
+                >
+                  <Send size={14} />
+                </button>
+              </div>
+            </div>
+            <p className="nv-footer__note">Supports 10+ Indian languages · Auto preference learning · AI answers may vary</p>
+          </div>
+        </section>
+
+        {/* ── Right Collapsible Product Shelf (Catalog Shelf) ── */}
+        <div className={`nv-product-shelf ${showShelf ? 'nv-product-shelf--open' : 'nv-product-shelf--closed'}`}>
+          <div className="nv-shelf-header">
+            <div className="nv-shelf-header__left">
+              <ShoppingBag size={14} className="text-indigo-500" />
+              <span className="nv-shelf-header__title">Companion Catalog</span>
+            </div>
+            <div className="nv-shelf-header__right">
+              <span className="nv-shelf-header__badge">{activeThread?.products?.length || 0} products found</span>
+              <button 
+                onClick={() => setShowShelf(false)}
+                className="nv-shelf-close-btn"
+                title="Collapse Catalog"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+          <div className="nv-shelf-content" id="main-content">
+            {children}
+          </div>
+        </div>
+
+        {/* FAB trigger for mobile drawers */}
         <div className="nv-fab">
           <button className="nv-fab__btn" onClick={() => setIsMobileChatOpen(true)} aria-label="Open AI assistant">
             <MessageCircle size={22} />
@@ -893,6 +2531,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           </button>
         </div>
 
+        {/* Mobile slide drawer */}
         {isMobileChatOpen && (
           <div
             className="nv-drawer-backdrop"
@@ -901,13 +2540,146 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           >
             <div className="nv-drawer">
               <div className="nv-drawer__handle" />
-              {renderPanelHeader(() => setIsMobileChatOpen(false))}
-              {renderMessageList()}
-              {renderInputFooter()}
+              
+              <div className="nv-chat-console-header" style={{ borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}>
+                <div className="nv-chat-header-left">
+                  <div className="nv-chat-header-title">{activeThread?.title || 'Mobile Chat'}</div>
+                </div>
+                <div className="nv-chat-header-right">
+                  <button onClick={() => clearMessages(userKey)} className="nv-header-action-btn"><Plus size={16} /></button>
+                  <button className="nv-shelf-close-btn" onClick={() => setIsMobileChatOpen(false)} aria-label="Close chat"><X size={16} /></button>
+                </div>
+              </div>
+
+              <div className="nv-chat-container-wrap">
+                {isNewChat ? (
+                  <div className="nv-welcome-screen" style={{ padding: '20px 14px' }}>
+                    <h2 className="nv-welcome-screen__title" style={{ fontSize: '18px' }}>
+                      Nuvix AI <span className="gradient-brand-text font-black">Shopping Assistant</span>
+                    </h2>
+                    <p className="nv-welcome-screen__subtitle">Describe what you're looking for, compare options, and manage your cart dynamically.</p>
+                    <div className="nv-welcome-screen__cards" style={{ width: '100%' }}>
+                      {SUGGESTION_CHIPS.map((chip, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => { handleSendMessage(chip.query); setIsMobileChatOpen(true); }}
+                          className="nv-welcome-card surface"
+                          style={{ padding: '10px 12px' }}
+                        >
+                          <span className="nv-welcome-card__icon">{chip.icon}</span>
+                          <span className="nv-welcome-card__title" style={{ fontSize: '10px' }}>{chip.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="nv-chat-messages-container" style={{ padding: '14px 10px 100px' }}>
+                    {messages.map((msg: Message, i: number) => (
+                      <MessageBubble
+                        key={i}
+                        message={msg}
+                        index={i}
+                        isCopied={copiedIndex === i}
+                        onCopy={handleCopy}
+                        onSpeak={(text, lang) => speakMessage(text, lang, i)}
+                        isSpeaking={speakingIndex === i}
+                        loading={i === messages.length - 1 && isThinking}
+                        onAddToCart={addToCart}
+                      />
+                    ))}
+                    {isThinking && (
+                      <div className="nv-msg-row nv-msg-row--ai">
+                        <div className="nv-msg-avatar nv-msg-avatar--ai glow-brand"><Sparkles size={13} className="text-cyan-200" /></div>
+                        <div className="nv-msg-bubble nv-msg-bubble--ai nv-msg-bubble--thinking"><TypingDots /></div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="nv-chat-input-container" style={{ padding: '10px 12px 16px', position: 'relative' }}>
+                <div className="nv-composer-wrapper">
+                  <div className={`nv-composer ${isListening ? 'nv-composer--listening' : ''}`}>
+                    {voiceSupported && (
+                      <button className={`nv-voice-btn ${isListening ? 'nv-voice-btn--active' : ''}`} onClick={startListening}>
+                        {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                      </button>
+                    )}
+                    <div className="nv-input-wrap">
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        className="nv-input"
+                        placeholder="Ask in any language…"
+                        value={isListening ? '' : inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                        disabled={isThinking || isListening}
+                      />
+                    </div>
+                    <button className="nv-send-btn" onClick={() => handleSendMessage()} disabled={!inputValue.trim() || isThinking}><Send size={14} /></button>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         )}
       </div>
+
+      {/* ── ChatGPT-style Immersive Hands-free Two-Way Voice Loop Overlay ── */}
+      {isVoiceConvOpen && (
+        <div className="nv-voice-overlay">
+          <div className="nv-voice-orb-wrapper">
+            {/* Ambient waves */}
+            <div className="nv-voice-wave-ring animate-pulse-soft" />
+            <div className="nv-voice-wave-ring animate-pulse-soft" style={{ animationDelay: '0.8s' }} />
+            <div className="nv-voice-wave-ring animate-pulse-soft" style={{ animationDelay: '1.6s' }} />
+
+            {/* Glowing Orb */}
+            <div 
+              className={`nv-voice-orb nv-voice-orb--${voiceConvState}`}
+              onClick={() => {
+                if (voiceConvState === 'listening') {
+                  setVoiceConvState('paused');
+                  stopSpeaking();
+                  if (recognitionRef.current) recognitionRef.current.stop();
+                } else if (voiceConvState === 'paused') {
+                  setVoiceConvState('listening');
+                  triggerVoiceConvListen();
+                }
+              }}
+            >
+              {voiceConvState === 'listening' && <Mic size={24} className="text-white" />}
+              {voiceConvState === 'thinking' && <Loader2 size={24} className="text-white animate-spin" />}
+              {voiceConvState === 'speaking' && <Volume2 size={24} className="text-white animate-pulse-beat" />}
+              {voiceConvState === 'paused' && <VolumeX size={24} className="text-white" />}
+            </div>
+          </div>
+
+          {/* Dynamic state tag */}
+          <div className={`nv-voice-conv-status nv-voice-conv-status--${voiceConvState}`}>
+            {voiceConvState === 'listening' && 'Listening...'}
+            {voiceConvState === 'thinking' && 'Thinking...'}
+            {voiceConvState === 'speaking' && 'Speaking...'}
+            {voiceConvState === 'paused' && 'Voice Session Paused'}
+          </div>
+
+          {/* Dynamic real-time subtitle block */}
+          <p className={`nv-voice-conv-text ${voiceConvState === 'thinking' ? 'nv-voice-conv-text--thinking' : ''}`}>
+            {voiceConvTranscript || (voiceConvState === 'listening' ? 'Say something...' : '')}
+          </p>
+
+          {/* Call hang-up control */}
+          <button 
+            onClick={endVoiceConversation}
+            className="nv-voice-conv-close-btn animate-fade-up"
+            title="End Hands-Free Voice Session"
+          >
+            <X size={20} strokeWidth={2.5} />
+          </button>
+        </div>
+      )}
     </>
   );
 }

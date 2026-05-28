@@ -218,7 +218,7 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
   let userPrefs: any = null;
   if (userId) {
     try {
-      const userObj = await User.findById(userId).lean();
+      const userObj = (await User.findById(userId).lean()) as any;
       if (userObj && userObj.preferences) {
         userPrefs = userObj.preferences;
       }
@@ -396,7 +396,7 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
 
     products.forEach((p: any) => {
       const nameLower = p.name.toLowerCase();
-      const isPreferred = Array.from(likedSet).some((brand: string) => nameLower.includes(brand));
+      const isPreferred = Array.from(likedSet).some((brand: any) => nameLower.includes(brand));
       if (isPreferred) {
         preferred.push(p);
       } else {

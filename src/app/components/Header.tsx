@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import NuvixLogo from './NuvixLogo';
 import { useAuthStore } from '../store/auth';
 import { useProductStore } from '../store/product';
+import { useChatStore } from '../store/chat';
 import { Button } from '../../components/ui/button';
 import { useIsMounted } from '../hooks/useIsMounted';
 import { Input } from '../../components/ui/input';
@@ -104,6 +105,15 @@ export default function Header() {
                 onClick={() => setIsMobileMenuOpen(true)}
               >
                 <Menu className="h-4.5 w-4.5" />
+              </button>
+
+              {/* Desktop Sidebar Toggle Button */}
+              <button
+                onClick={() => useChatStore.getState().toggleSidebar()}
+                title="Toggle AI Chat History"
+                className="hidden lg:flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 dark:bg-white/[0.05] border border-slate-200/80 dark:border-white/[0.08] text-slate-600 dark:text-white/70 hover:bg-slate-200 dark:hover:bg-white/10 hover:text-indigo-600 dark:hover:text-white transition-all active:scale-90 cursor-pointer"
+              >
+                <Menu className="h-4 w-4" />
               </button>
 
               {/* Logo */}

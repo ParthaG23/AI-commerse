@@ -1,0 +1,182 @@
+=== PAGE 1 ===
+Human–Computer Interaction  
+through  
+Context-Aware Collaborative AI Agents 
+ 
+A PROJECT REPORT 
+ 
+Submitted by 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+in partial fulfilment for the award of degree 
+of 
+Bachelor of Technology in Computer Science & Engineering – Data Science 
+in 
+School of Engineering 
+Department of Computer Science & Engineering- Cyber Security & Data Science 
+ 
+  
+ 
+ 
+ 
+ 
+  
+BRAINWARE UNIVERSITY 
+398, Ramkrishnapur Road, Barasat, North 24-Parganas, Kolkata- 700125 
+ 
+ 
+Subinay Panda 
+Soumen Maity 
+Rick Meta 
+Partha Gayen 
+
+=== PAGE 2 ===
+MAY 2026 
+ 
+Human–Computer Interaction through Context-Aware Collaborative AI Agents
+ 
+ 
+ 
+ 
+ 
+Submitted by 
+ 
+Student Code Roll Number Registration Number Name 
+BWU/BTD/22/289 22010333262 22013002171 of 2022-2023 SUBINAY PANDA 
+BWU/BTD/22/242 22010333220 22013002126 of 2022-2023 SOUMEN MAITY 
+BWU/BTD/22/252 22010333229 22013002136 of 2022-2023 RICK META 
+BWU/BTD/22/270 22010333245 22013002153 of 2022-2023 PARTHA GAYEN 
+ 
+in partial fulfillment for the award of degree 
+of 
+Bachelor of Technology in Computer Science & Engineering – Data Science 
+in 
+School of Engineering 
+Department of Computer Science & Engineering- Cyber Security & Data Science 
+ 
+ 
+ 
+ 
+ 
+BRAINWARE UNIVERSITY 
+398, Ramkrishnapur Road, Barasat, North 24-Parganas, Kolkata- 700125 
+Course Code: PROJ-CSD881 
+Course Title: PROJECT-II 
+ 
+ 
+
+
+=== PAGE 3 ===
+3 
+ 
+ 
+ 
+BRAINWARE UNIVERSITY 
+School of Engineering 
+Department of Computer Science & Engineering – Cyber Security & Data Science 
+398, Ramkrishnapur Road, Barasat, North 24 Parganas, Kolkata - 700 125 
+ 
+ 
+Bonafide Certificate 
+ 
+ 
+Certified that this project report, ― Human–Computer Interaction through Context-Aware 
+Collaborative AI Agents,‖ is the Bona Fide work of Subinay Panda, Soumen Maity, Rick 
+Meta, and Partha Gayen, who carried out the project work under my supervision. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+. 
+    
+Dr. Supriya Chakraborty 
+(Supervisor) 
+Associate Professor 
+Dept. CSE- CS & DS 
+Brainware University 
+Dr. Supriya Chakraborty 
+(HOD) 
+Associate Professor 
+Dept. CSE- CS & DS 
+Brainware University 
+
+=== PAGE 4 ===
+4 
+ 
+ 
+BRAINWARE UNIVERSITY 
+School of Engineering 
+Department of Computer Science & Engineering – Cyber Security & Data Science 
+398, Ramkrishnapur Road, Barasat, North 24 Parganas, Kolkata - 700 125 
+ 
+Declaration 
+ 
+ 
+I/we hereby declare that the project  entitled “Human–Computer Interaction t hrough 
+Context-Aware Collaborative AI Agents” contains original and genuine work  by the 
+undersigned, as a part of degree of Bachelor of Technology in Computer Science & 
+Engineering- Data Science , and submitted in the Department of Computer Science and 
+Engineering-CS & DS, Brainware  University, not somewhere else. All information has been 
+obtained and presented in accordance with academic rules and ethical conduct. 
+I/we also declare that, as required by these rules and conduct, I have fully cited and referenced 
+all materials and results that are not original to this work. 
+ 
+ 
+ 
+ 
+ 
+Roll Number Registration Number Name Signature 
+22010333262 22013002171 of 2022-2023 SUBINAY PANDA  
+22010333220 22013002126 of 2022-2023 SOUMEN MAITY  
+22010333229 22013002136 of 2022-2023 RICK META  
+22010333245 22013002153 of 2022-2023 PARTHA GAYEN  
+ 
+
+
+=== PAGE 5 ===
+1 
+ 
+ 
+Acknowledgement 
+ 
+I sincerely thank my Project Guide, Dr. Supriya Chakraborty, for trusting me with the 
+responsibility of coordinating the team. His constant direction and timely feedback helped us 
+stay on track. I am grateful to my team for their cooperation and to my family for their 
+patience during late work nights. 
+SUBINAY PANDA 
+ 
+ 
+I express my deep gratitude to my Project Guide, Dr. Supriya Chakraborty, for helping me 
+overcome technical challenges during development. His insights on code structure and logic 
+were invaluable. I also thank my parents for their encouragement and my teammates for their 
+collaborative spirit. 
+SOUMEN MAITY 
+ 
+ 
+I am thankful to my Project Guide, Dr. Supriya Chakraborty, for guiding me in structuring 
+the report and refining our research approach. His attention to detail improved the quality of 
+our documentation. My sincere thanks to my family and friends for bearing with my long 
+writing hours. 
+RICK META 
+ 
+ 
+I extend my gratitude to my Project Guide, Dr. Supriya Chakraborty, for emphasizing the 
+importance of testing and quality. His suggestions helped me identify critical bugs. I am 
+grateful to my teammates for their support and to my family for being my constant 
+motivation. 
+PARTHA GAYEN 
+ 
+ 
+ 

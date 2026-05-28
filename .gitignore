@@ -41,4 +41,8 @@ yarn-error.log*
 next-env.d.ts
 
 # Images and scraped media
-/public/images/
+/public/images/*
+!/public/images/*.png
+!/public/images/*.jpg
+!/public/images/*.jpeg
+!/public/images/*.webp

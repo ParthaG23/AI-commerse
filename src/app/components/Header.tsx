@@ -120,7 +120,7 @@ export default function Header() {
                   active:scale-95
                 ">
                   {/* Glowing 3D Logo Icon */}
-                  <div className="relative h-7 w-7 flex-shrink-0 transition-transform duration-300 group-hover:rotate-[6deg] group-hover:scale-110">
+                  <div className="relative h-9 w-9 flex-shrink-0 transition-transform duration-300 group-hover:rotate-[6deg] group-hover:scale-110">
                     <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-cyan-500/20 rounded-full blur-[4px] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                     <Image src="/logo.png" alt="Nuvix Logo" fill className="object-contain relative z-10" priority />
                   </div>

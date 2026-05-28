@@ -1,6 +1,0 @@
-2026-03-27 13:14:21,725  INFO      Image downloader started  |  source=output\amazon_products.csv  output=images  threads=8  categories=ALL
-2026-03-27 13:14:21,725  INFO      Loading records from output\amazon_products.csv …
-2026-03-27 13:14:21,757  INFO      Found 6878 unique ASINs across 47 categories
-2026-03-27 13:17:32,022  INFO      Manifest saved → output\download_manifest.json  (6878 total records)
-2026-03-27 13:17:32,025  INFO      ━━━ Download complete ━━━  ✓ new=6878   skip=0      ✗ error=0      no_url=0
-2026-03-27 13:17:32,026  INFO      Images saved under:  images/

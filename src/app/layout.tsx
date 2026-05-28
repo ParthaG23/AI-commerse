@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
+import PwaManager from "./components/PwaManager";
+import PremiumSplashScreen from "./components/PremiumSplashScreen";
+import PwaInstallBanner from "./components/PwaInstallBanner";
 
 /* ─────────────────────────────────────────
    FONTS
@@ -130,16 +133,14 @@ export const metadata: Metadata = {
   /* ── Icons ── */
   icons: {
     icon: [
-      { url: "/favicon-16x16.png",  sizes: "16x16",  type: "image/png" },
-      { url: "/favicon-32x32.png",  sizes: "32x32",  type: "image/png" },
-      { url: "/favicon-96x96.png",  sizes: "96x96",  type: "image/png" },
-      { url: "/favicon.ico",        sizes: "any" },
+      { url: "/favicon.svg?v=3",        type: "image/svg+xml" },
+      { url: "/favicon-16x16.png?v=3",  sizes: "16x16",  type: "image/png" },
+      { url: "/favicon-32x32.png?v=3",  sizes: "32x32",  type: "image/png" },
+      { url: "/favicon-96x96.png?v=3",  sizes: "96x96",  type: "image/png" },
+      { url: "/favicon.ico?v=3",        sizes: "any" },
     ],
     apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
-    ],
-    other: [
-      { rel: "mask-icon", url: "/safari-pinned-tab.svg", color: "#4f46e5" },
+      { url: "/apple-touch-icon.png?v=3", sizes: "180x180", type: "image/png" },
     ],
   },
 
@@ -241,6 +242,12 @@ export default function RootLayout({
           selection:bg-indigo-500/15 selection:text-foreground
         `}
       >
+        {/* PWA Background Services */}
+        <PwaManager />
+        
+        {/* Premium Splash Screen Overlay */}
+        <PremiumSplashScreen />
+
         {/* Skip-to-content — keyboard / screen-reader accessibility */}
         <a
           href="#main-content"
@@ -271,6 +278,9 @@ export default function RootLayout({
         </main>
 
         <Footer />
+
+        {/* Premium PWA Installation Banner */}
+        <PwaInstallBanner />
       </body>
     </html>
   );

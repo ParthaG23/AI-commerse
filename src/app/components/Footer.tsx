@@ -2,6 +2,7 @@ import { Separator } from '../../components/ui/separator';
 import { HelpCircle, Shield, Sparkles, CheckCircle, Mail, Phone, MapPin, Linkedin, Twitter, Instagram, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import NuvixLogo from './NuvixLogo';
 
 export default function Footer() {
   return (
@@ -23,8 +24,8 @@ export default function Footer() {
                 group-hover:bg-slate-200/50 dark:group-hover:bg-slate-900/80
                 group-hover:shadow-[0_2px_12px_rgba(99,102,241,0.1)] dark:group-hover:shadow-[0_4px_20px_rgba(99,102,241,0.2)]
               ">
-                <div className="relative h-6.5 w-6.5 flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
-                  <Image src="/logo.png" alt="Nuvix Logo" fill className="object-contain" />
+                <div className="flex-shrink-0 transition-transform duration-300 group-hover:scale-110">
+                  <NuvixLogo size={24} glow={true} />
                 </div>
                 <span className="text-sm font-black tracking-widest bg-gradient-to-r from-indigo-600 to-cyan-500 dark:from-indigo-400 dark:to-cyan-400 bg-clip-text text-transparent uppercase">
                   Nuvix

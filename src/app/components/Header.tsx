@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import NuvixLogo from './NuvixLogo';
 import { useAuthStore } from '../store/auth';
 import { useProductStore } from '../store/product';
 import { Button } from '../../components/ui/button';
@@ -119,10 +120,9 @@ export default function Header() {
                   group-hover:shadow-[0_4px_16px_rgba(99,102,241,0.12)] dark:group-hover:shadow-[0_6px_24px_rgba(99,102,241,0.25)]
                   active:scale-95
                 ">
-                  {/* Glowing 3D Logo Icon */}
-                  <div className="relative h-9 w-9 flex-shrink-0 transition-transform duration-300 group-hover:rotate-[6deg] group-hover:scale-110">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-cyan-500/20 rounded-full blur-[4px] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    <Image src="/logo.png" alt="Nuvix Logo" fill className="object-contain relative z-10" priority />
+                  {/* Glowing Vector Logo Icon */}
+                  <div className="flex-shrink-0 transition-transform duration-300 group-hover:rotate-[6deg] group-hover:scale-110">
+                    <NuvixLogo size={32} glow={true} />
                   </div>
                   
                   {/* Branding text inside the capsule badge */}

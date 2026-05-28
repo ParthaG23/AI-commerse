@@ -39,7 +39,7 @@ const FASHION_MOCK: Product[] = [
 ];
 
 const BEAUTY_MOCK: Product[] = [
-  { _id: 'b1', name: 'Lakme Absolute Matte Lipstick — Rose Bud', description: '', price: 599,  images: ['https://images.unsplash.com/photo-1586495777744-4e6232bf2177?w=400&q=80'], category: 'Beauty', stock: 100, ratings: 4.4 },
+  { _id: 'b1', name: 'Lakme Absolute Matte Lipstick — Rose Bud', description: '', price: 599,  images: ['https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=400&q=80'], category: 'Beauty', stock: 100, ratings: 4.4 },
   { _id: 'b2', name: 'Minimalist 10% Niacinamide Face Serum 30ml', description: '', price: 399,  images: ['https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=400&q=80'], category: 'Beauty', stock: 80,  ratings: 4.7 },
   { _id: 'b3', name: 'Mamaearth Vitamin C Sunscreen SPF 50 PA+++', description: '', price: 299,  images: ['https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=400&q=80'], category: 'Beauty', stock: 120, ratings: 4.2 },
   { _id: 'b4', name: 'Forest Essentials Facial Tonic Mist — Rose', description: '', price: 1250, images: ['https://images.unsplash.com/photo-1571781926291-c477ebfd024b?w=400&q=80'], category: 'Beauty', stock: 35,  ratings: 4.5 },
@@ -56,7 +56,7 @@ const SPORTS_MOCK: Product[] = [
   { _id: 's1', name: 'Cosco Durable Leather Football — Size 5', description: '', price: 699,  images: ['https://images.unsplash.com/photo-1553778263-73a83bab9b0c?w=400&q=80'], category: 'Sports', stock: 80,  ratings: 4.3 },
   { _id: 's2', name: 'Strauss Adjustable Dumbbell Set 2–10 kg', description: '', price: 2499, images: ['https://images.unsplash.com/photo-1584466977773-e625c37cdd50?w=400&q=80'], category: 'Sports', stock: 30,  ratings: 4.5 },
   { _id: 's3', name: 'Nivia Storm Basketball — Official Size', description: '', price: 899,  images: ['https://images.unsplash.com/photo-1546519638-68e109498ffc?w=400&q=80'], category: 'Sports', stock: 55,  ratings: 4.2 },
-  { _id: 's4', name: 'Boldfit Pro Yoga Mat 6mm Non-Slip with Carry Bag', description: '', price: 599,  images: ['https://images.unsplash.com/photo-1601925228787-e4fc8c6a5af5?w=400&q=80'], category: 'Sports', stock: 90,  ratings: 4.4 },
+  { _id: 's4', name: 'Boldfit Pro Yoga Mat 6mm Non-Slip with Carry Bag', description: '', price: 599,  images: ['https://images.unsplash.com/photo-1592432678016-e910b452f9a2?w=400&q=80'], category: 'Sports', stock: 90,  ratings: 4.4 },
 ];
 
 /* ─────────────────────────────────────────────────
@@ -151,7 +151,7 @@ const SLIDES = [
       light: { bg: '#f8faff', accent: '#4f46e5', tag: '#e0e7ff', tagText: '#4338ca' },
       dark:  { bg: '#07091a', accent: '#818cf8', tag: '#1e1b4b', tagText: '#a5b4fc' },
     },
-    image: '/images/showcase_electronics.png',
+    image: '/images/showcase_electronics.jpg',
   },
   {
     eyebrow: 'New Season · Just Landed',
@@ -164,7 +164,7 @@ const SLIDES = [
       light: { bg: '#fff0f6', accent: '#db2777', tag: '#fce7f3', tagText: '#9d174d' },
       dark:  { bg: '#1a0510', accent: '#f472b6', tag: '#500724', tagText: '#fbcfe8' },
     },
-    image: '/images/showcase_fashion.png',
+    image: '/images/showcase_fashion.jpg',
   },
   {
     eyebrow: 'AI-Powered · Only on Nuvix',
@@ -177,7 +177,7 @@ const SLIDES = [
       light: { bg: '#f0fdff', accent: '#0891b2', tag: '#cffafe', tagText: '#0e7490' },
       dark:  { bg: '#060f18', accent: '#22d3ee', tag: '#083344', tagText: '#67e8f9' },
     },
-    image: '/images/showcase_co_shopper.png',
+    image: '/images/showcase_co_shopper.jpg',
   },
 ];
 

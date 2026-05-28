@@ -1,44 +1,126 @@
-import { NextResponse } from 'next/server';
-import Groq from 'groq-sdk';
-import dbConnect from '@/lib/mongodb';
-import Product from '@/models/Product';
-import User from '@/models/User';
+import { NextResponse } from "next/server";
+import Groq from "groq-sdk";
+import mongoose, { Document } from "mongoose";
+import dbConnect from "@/lib/mongodb";
+import Product from "@/models/Product";
+import User from "@/models/User";
+
+type UserPreferences = {
+  budgetMin: number;
+  budgetMax: number;
+  likedBrands: string[];
+  dislikedBrands: string[];
+  useCases: string[];
+};
 
 const groq = new Groq({ apiKey: process.env.GROQ_API });
 
 const SUBCATEGORY_GENERIC_WORDS: { [key: string]: string[] } = {
-  men_tshirt: ['tshirt', 't-shirt', 'tees', 'tee', 'polo'],
-  men_shirt: ['shirt', 'shirts', 'formal', 'casual'],
-  men_jeans: ['jeans', 'pant', 'pants', 'denim', 'trouser', 'trousers'],
-  men_shorts: ['shorts', 'short', 'cargo', 'half-pant'],
-  women_dress: ['dress', 'dresses', 'gown', 'gowns', 'salwar', 'suit', 'suits', 'lehenga'],
-  women_saree: ['saree', 'sari', 'sarees', 'traditional'],
-  women_kurta: ['kurta', 'kurti', 'kurtis', 'kurtas'],
-  men_shoes: ['shoes', 'shoe', 'sneakers', 'sneaker', 'boots', 'boot', 'sandals', 'sandal', 'slippers', 'slipper'],
-  women_shoes: ['shoes', 'shoe', 'heels', 'heel', 'flats', 'flat', 'boots', 'boot', 'sandals', 'sandal', 'wedges', 'wedge'],
-  backpack: ['backpack', 'backpacks', 'bag', 'bags', 'travel'],
-  sunglasses: ['sunglasses', 'sunglass', 'goggles', 'goggle', 'glass', 'glasses', 'eyewear'],
-  smartphone: ['phone', 'phones', 'mobile', 'mobiles', 'smartphone', 'smartphones', 'cellphone', 'cellphones'],
-  laptop: ['laptop', 'laptops', 'notebook', 'notebooks'],
-  gaming_laptop: ['laptop', 'laptops', 'gaming'],
-  tablet: ['tablet', 'tablets', 'ipad', 'ipads'],
-  smartwatch: ['watch', 'watches', 'smartwatch', 'smartwatches', 'band', 'bands'],
-  smart_tv: ['tv', 'tvs', 'television', 'televisions', 'led', 'leds'],
-  headphones: ['headphones', 'headphone', 'headfone', 'headfones'],
-  earbuds: ['earbuds', 'earbud', 'airpods', 'airpod', 'tws'],
-  face_cream: ['cream', 'creams', 'moisturizer', 'moisturizers', 'serum', 'serums', 'facecream'],
-  shampoo: ['shampoo', 'shampoos', 'conditioner', 'conditioners', 'hair'],
-  perfume: ['perfume', 'perfumes', 'scent', 'scents', 'cologne', 'colognes'],
-  electric_toothbrush: ['toothbrush', 'toothbrushes', 'electric'],
-  yoga_mat: ['mat', 'mats', 'yoga'],
-  cricket_bat: ['bat', 'bats', 'cricket'],
-  fitness_tracker: ['tracker', 'trackers', 'fitness', 'band', 'bands'],
-  books_bestseller: ['books', 'book', 'bestseller'],
-  toys: ['toys', 'toy'],
-  dry_fruits: ['dry', 'fruits', 'fruit', 'almond', 'almonds', 'cashew', 'cashews'],
-  protein_powder: ['protein', 'powder', 'whey'],
-  car_accessories: ['car', 'accessories', 'accessory'],
-  helmet: ['helmet', 'helmets', 'driving']
+  men_tshirt: ["tshirt", "t-shirt", "tees", "tee", "polo"],
+  men_shirt: ["shirt", "shirts", "formal", "casual"],
+  men_jeans: ["jeans", "pant", "pants", "denim", "trouser", "trousers"],
+  men_shorts: ["shorts", "short", "cargo", "half-pant"],
+  women_dress: [
+    "dress",
+    "dresses",
+    "gown",
+    "gowns",
+    "salwar",
+    "suit",
+    "suits",
+    "lehenga",
+  ],
+  women_saree: ["saree", "sari", "sarees", "traditional"],
+  women_kurta: ["kurta", "kurti", "kurtis", "kurtas"],
+  men_shoes: [
+    "shoes",
+    "shoe",
+    "sneakers",
+    "sneaker",
+    "boots",
+    "boot",
+    "sandals",
+    "sandal",
+    "slippers",
+    "slipper",
+  ],
+  women_shoes: [
+    "shoes",
+    "shoe",
+    "heels",
+    "heel",
+    "flats",
+    "flat",
+    "boots",
+    "boot",
+    "sandals",
+    "sandal",
+    "wedges",
+    "wedge",
+  ],
+  backpack: ["backpack", "backpacks", "bag", "bags", "travel"],
+  sunglasses: [
+    "sunglasses",
+    "sunglass",
+    "goggles",
+    "goggle",
+    "glass",
+    "glasses",
+    "eyewear",
+  ],
+  smartphone: [
+    "phone",
+    "phones",
+    "mobile",
+    "mobiles",
+    "smartphone",
+    "smartphones",
+    "cellphone",
+    "cellphones",
+  ],
+  laptop: ["laptop", "laptops", "notebook", "notebooks"],
+  gaming_laptop: ["laptop", "laptops", "gaming"],
+  tablet: ["tablet", "tablets", "ipad", "ipads"],
+  smartwatch: [
+    "watch",
+    "watches",
+    "smartwatch",
+    "smartwatches",
+    "band",
+    "bands",
+  ],
+  smart_tv: ["tv", "tvs", "television", "televisions", "led", "leds"],
+  headphones: ["headphones", "headphone", "headfone", "headfones"],
+  earbuds: ["earbuds", "earbud", "airpods", "airpod", "tws"],
+  face_cream: [
+    "cream",
+    "creams",
+    "moisturizer",
+    "moisturizers",
+    "serum",
+    "serums",
+    "facecream",
+  ],
+  shampoo: ["shampoo", "shampoos", "conditioner", "conditioners", "hair"],
+  perfume: ["perfume", "perfumes", "scent", "scents", "cologne", "colognes"],
+  electric_toothbrush: ["toothbrush", "toothbrushes", "electric"],
+  yoga_mat: ["mat", "mats", "yoga"],
+  cricket_bat: ["bat", "bats", "cricket"],
+  fitness_tracker: ["tracker", "trackers", "fitness", "band", "bands"],
+  books_bestseller: ["books", "book", "bestseller"],
+  toys: ["toys", "toy"],
+  dry_fruits: [
+    "dry",
+    "fruits",
+    "fruit",
+    "almond",
+    "almonds",
+    "cashew",
+    "cashews",
+  ],
+  protein_powder: ["protein", "powder", "whey"],
+  car_accessories: ["car", "accessories", "accessory"],
+  helmet: ["helmet", "helmets", "driving"],
 };
 
 const systemPrompt1 = `You are the Intent Extractor for Nuvix, an advanced Indian e-commerce platform.
@@ -166,9 +248,15 @@ function sanitizeParams(sp: any) {
 
   const isInvalid = (val: any) => {
     if (val === null || val === undefined) return true;
-    if (typeof val === 'string') {
+    if (typeof val === "string") {
       const lower = val.trim().toLowerCase();
-      return lower === '' || lower === 'null' || lower === 'none' || lower === 'undefined' || lower === 'empty';
+      return (
+        lower === "" ||
+        lower === "null" ||
+        lower === "none" ||
+        lower === "undefined" ||
+        lower === "empty"
+      );
     }
     return false;
   };
@@ -183,7 +271,8 @@ function sanitizeParams(sp: any) {
     clean.features = sp.features.filter((f: any) => !isInvalid(f));
   }
   if (!isInvalid(sp.sort)) clean.sort = String(sp.sort).trim();
-  if (!isInvalid(sp.subcategory)) clean.subcategory = String(sp.subcategory).trim();
+  if (!isInvalid(sp.subcategory))
+    clean.subcategory = String(sp.subcategory).trim();
   if (sp.fuzzy_terms && Array.isArray(sp.fuzzy_terms)) {
     clean.fuzzy_terms = sp.fuzzy_terms.filter((t: any) => !isInvalid(t));
   }
@@ -195,16 +284,57 @@ function mapCategory(cat: string): string | null {
   if (!cat) return null;
   const lower = cat.toLowerCase().trim();
 
-  if (lower.includes('electronics') || lower.includes('appliance')) return 'Electronics';
-  if (lower.includes('accessory') || lower.includes('accessories')) return 'Accessories';
-  if (lower.includes('wearable') || lower.includes('watch') || lower.includes('ghadi')) return 'Wearables';
-  if (lower.includes('home') || lower.includes('kitchen') || lower.includes('furniture')) return 'Home & Kitchen';
-  if (lower.includes('fashion') || lower.includes('clothing') || lower.includes('footwear') || lower.includes('shoe') || lower.includes('cloth') || lower.includes('shrit') || lower.includes('shirt')) return 'Fashion';
-  if (lower.includes('beauty') || lower.includes('grooming') || lower.includes('makeup')) return 'Beauty & Grooming';
-  if (lower.includes('sports') || lower.includes('fitness') || lower.includes('gym')) return 'Sports & Fitness';
-  if (lower.includes('books') || lower.includes('toys') || lower.includes('book')) return 'Books & Toys';
-  if (lower.includes('grocery') || lower.includes('food')) return 'Grocery';
-  if (lower.includes('automotive') || lower.includes('car') || lower.includes('auto')) return 'Automotive';
+  if (lower.includes("electronics") || lower.includes("appliance"))
+    return "Electronics";
+  if (lower.includes("accessory") || lower.includes("accessories"))
+    return "Accessories";
+  if (
+    lower.includes("wearable") ||
+    lower.includes("watch") ||
+    lower.includes("ghadi")
+  )
+    return "Wearables";
+  if (
+    lower.includes("home") ||
+    lower.includes("kitchen") ||
+    lower.includes("furniture")
+  )
+    return "Home & Kitchen";
+  if (
+    lower.includes("fashion") ||
+    lower.includes("clothing") ||
+    lower.includes("footwear") ||
+    lower.includes("shoe") ||
+    lower.includes("cloth") ||
+    lower.includes("shrit") ||
+    lower.includes("shirt")
+  )
+    return "Fashion";
+  if (
+    lower.includes("beauty") ||
+    lower.includes("grooming") ||
+    lower.includes("makeup")
+  )
+    return "Beauty & Grooming";
+  if (
+    lower.includes("sports") ||
+    lower.includes("fitness") ||
+    lower.includes("gym")
+  )
+    return "Sports & Fitness";
+  if (
+    lower.includes("books") ||
+    lower.includes("toys") ||
+    lower.includes("book")
+  )
+    return "Books & Toys";
+  if (lower.includes("grocery") || lower.includes("food")) return "Grocery";
+  if (
+    lower.includes("automotive") ||
+    lower.includes("car") ||
+    lower.includes("auto")
+  )
+    return "Automotive";
 
   return null;
 }
@@ -218,12 +348,14 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
   let userPrefs: any = null;
   if (userId) {
     try {
-      const userObj = (await User.findById(userId).lean()) as any;
-      if (userObj && userObj.preferences) {
+      const userObj = (await User.findById(userId).lean().exec()) as
+        | ({ preferences?: UserPreferences } & { _id: unknown })
+        | null;
+      if (userObj?.preferences) {
         userPrefs = userObj.preferences;
       }
     } catch (e) {
-      console.error('Error fetching user preferences:', e);
+      console.error("Error fetching user preferences:", e);
     }
   }
 
@@ -235,7 +367,7 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
 
   // Subcategory
   if (sp.subcategory) {
-    filter.subcategory = { $regex: new RegExp(`^${sp.subcategory}$`, 'i') };
+    filter.subcategory = { $regex: new RegExp(`^${sp.subcategory}$`, "i") };
   }
 
   // Price range - support predictive preference constraints
@@ -244,32 +376,86 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
     if (sp.price_min) priceFilter.$gte = Number(sp.price_min);
     if (sp.price_max) priceFilter.$lte = Number(sp.price_max);
     filter.price = priceFilter;
-  } else if (userPrefs && userPrefs.budgetMax && Number(userPrefs.budgetMax) > 0) {
+  } else if (
+    userPrefs &&
+    userPrefs.budgetMax &&
+    Number(userPrefs.budgetMax) > 0
+  ) {
     // Apply user's historical budget ceiling predictively if they didn't specify one
     filter.price = { $lte: Number(userPrefs.budgetMax) };
   }
 
   // Brand / Color
   if (sp.brand) {
-    filter.name = { $regex: new RegExp(sp.brand, 'i') };
+    filter.name = { $regex: new RegExp(sp.brand, "i") };
   }
   if (sp.color) {
     filter.$or = [
-      { name: { $regex: new RegExp(`\\b${sp.color.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') } },
-      { description: { $regex: new RegExp(`\\b${sp.color.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') } }
+      {
+        name: {
+          $regex: new RegExp(
+            `\\b${sp.color.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+            "i",
+          ),
+        },
+      },
+      {
+        description: {
+          $regex: new RegExp(
+            `\\b${sp.color.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+            "i",
+          ),
+        },
+      },
     ];
   }
 
   // Search keyword (query) - split and match all words separately with word boundaries
   if (sp.query) {
-    const stopWords = new Set(['for', 'with', 'under', 'above', 'in', 'of', 'and', 'a', 'an', 'the', 'ke', 'ka', 'ki', 'se', 'kam', 'zyada']);
-    const genderGenericWords = new Set([
-      'men', 'mens', 'women', 'womens', 'man', 'mans', 'woman', 'womans',
-      'boy', 'boys', 'girl', 'girls', 'kid', 'kids', 'unisex', 'adult', 'adults'
+    const stopWords = new Set([
+      "for",
+      "with",
+      "under",
+      "above",
+      "in",
+      "of",
+      "and",
+      "a",
+      "an",
+      "the",
+      "ke",
+      "ka",
+      "ki",
+      "se",
+      "kam",
+      "zyada",
     ]);
-    let words = sp.query.split(/\s+/)
+    const genderGenericWords = new Set([
+      "men",
+      "mens",
+      "women",
+      "womens",
+      "man",
+      "mans",
+      "woman",
+      "womans",
+      "boy",
+      "boys",
+      "girl",
+      "girls",
+      "kid",
+      "kids",
+      "unisex",
+      "adult",
+      "adults",
+    ]);
+    let words = sp.query
+      .split(/\s+/)
       .map((w: string) => w.toLowerCase().trim())
-      .filter((w: string) => w !== '' && !stopWords.has(w) && !genderGenericWords.has(w));
+      .filter(
+        (w: string) =>
+          w !== "" && !stopWords.has(w) && !genderGenericWords.has(w),
+      );
 
     // Strip generic subcategory terms so they don't block queries when product titles only contain brand names
     if (sp.subcategory) {
@@ -283,18 +469,28 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
       words.forEach((w: string) => {
         filter.$and.push({
           $or: [
-            { name: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') },
-            { description: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }
-          ]
+            {
+              name: new RegExp(
+                `\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+                "i",
+              ),
+            },
+            {
+              description: new RegExp(
+                `\\b${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+                "i",
+              ),
+            },
+          ],
         });
       });
     }
   }
 
   let sortOption: any = { ratings: -1, price: 1 };
-  if (sp.sort === 'price_asc') sortOption = { price: 1 };
-  if (sp.sort === 'price_desc') sortOption = { price: -1 };
-  if (sp.sort === 'rating') sortOption = { ratings: -1 };
+  if (sp.sort === "price_asc") sortOption = { price: 1 };
+  if (sp.sort === "price_desc") sortOption = { price: -1 };
+  if (sp.sort === "rating") sortOption = { ratings: -1 };
 
   let products = await Product.find(filter).sort(sortOption).limit(40).lean();
 
@@ -302,15 +498,51 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
   if (products.length === 0 && sp.query) {
     const broadFilter: any = {};
     if (dbCategory) broadFilter.category = dbCategory;
-    
-    const stopWords = new Set(['for', 'with', 'under', 'above', 'in', 'of', 'and', 'a', 'an', 'the', 'ke', 'ka', 'ki', 'se', 'kam', 'zyada']);
-    const genderGenericWords = new Set([
-      'men', 'mens', 'women', 'womens', 'man', 'mans', 'woman', 'womans',
-      'boy', 'boys', 'girl', 'girls', 'kid', 'kids', 'unisex', 'adult', 'adults'
+
+    const stopWords = new Set([
+      "for",
+      "with",
+      "under",
+      "above",
+      "in",
+      "of",
+      "and",
+      "a",
+      "an",
+      "the",
+      "ke",
+      "ka",
+      "ki",
+      "se",
+      "kam",
+      "zyada",
     ]);
-    let words = sp.query.split(/\s+/)
+    const genderGenericWords = new Set([
+      "men",
+      "mens",
+      "women",
+      "womens",
+      "man",
+      "mans",
+      "woman",
+      "womans",
+      "boy",
+      "boys",
+      "girl",
+      "girls",
+      "kid",
+      "kids",
+      "unisex",
+      "adult",
+      "adults",
+    ]);
+    let words = sp.query
+      .split(/\s+/)
       .map((w: string) => w.toLowerCase().trim())
-      .filter((w: string) => w !== '' && !stopWords.has(w) && !genderGenericWords.has(w));
+      .filter(
+        (w: string) =>
+          w !== "" && !stopWords.has(w) && !genderGenericWords.has(w),
+      );
 
     if (sp.subcategory) {
       const subcatLower = sp.subcategory.toLowerCase();
@@ -322,10 +554,13 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
       broadFilter.$and = [];
       words.forEach((w: string) => {
         broadFilter.$and.push({
-          name: new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+          name: new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
         });
       });
-      products = await Product.find(broadFilter).sort(sortOption).limit(20).lean();
+      products = await Product.find(broadFilter)
+        .sort(sortOption)
+        .limit(20)
+        .lean();
     }
   }
 
@@ -335,20 +570,23 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
     if (dbCategory) fuzzyFilter.category = dbCategory;
     const regexTerms = sp.fuzzy_terms
       .map((t: string) => t.toLowerCase().trim())
-      .filter((t: string) => t !== '')
-      .map((t: string) => `\\b${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
-      .join('|');
+      .filter((t: string) => t !== "")
+      .map((t: string) => `\\b${t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
+      .join("|");
 
     if (regexTerms) {
-      fuzzyFilter.name = { $regex: new RegExp(`(${regexTerms})`, 'i') };
-      products = await Product.find(fuzzyFilter).sort(sortOption).limit(20).lean();
+      fuzzyFilter.name = { $regex: new RegExp(`(${regexTerms})`, "i") };
+      products = await Product.find(fuzzyFilter)
+        .sort(sortOption)
+        .limit(20)
+        .lean();
     }
   }
 
   // Fallback 3: Subcategory fallback (drop name keywords if 0 items found, query purely by subcategory + price/brand)
   if (products.length === 0 && sp.subcategory) {
     const subcatFilter: any = {
-      subcategory: { $regex: new RegExp(`^${sp.subcategory}$`, 'i') }
+      subcategory: { $regex: new RegExp(`^${sp.subcategory}$`, "i") },
     };
     if (dbCategory) subcatFilter.category = dbCategory;
 
@@ -357,15 +595,22 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
       if (sp.price_min) priceFilter.$gte = Number(sp.price_min);
       if (sp.price_max) priceFilter.$lte = Number(sp.price_max);
       subcatFilter.price = priceFilter;
-    } else if (userPrefs && userPrefs.budgetMax && Number(userPrefs.budgetMax) > 0) {
+    } else if (
+      userPrefs &&
+      userPrefs.budgetMax &&
+      Number(userPrefs.budgetMax) > 0
+    ) {
       subcatFilter.price = { $lte: Number(userPrefs.budgetMax) };
     }
 
     if (sp.brand) {
-      subcatFilter.name = { $regex: new RegExp(sp.brand, 'i') };
+      subcatFilter.name = { $regex: new RegExp(sp.brand, "i") };
     }
 
-    products = await Product.find(subcatFilter).sort(sortOption).limit(20).lean();
+    products = await Product.find(subcatFilter)
+      .sort(sortOption)
+      .limit(20)
+      .lean();
   }
 
   // Fallback 4: Category fallback (drop subcategory if still 0 items found, query purely by category + price/brand)
@@ -377,12 +622,16 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
       if (sp.price_min) priceFilter.$gte = Number(sp.price_min);
       if (sp.price_max) priceFilter.$lte = Number(sp.price_max);
       catFilter.price = priceFilter;
-    } else if (userPrefs && userPrefs.budgetMax && Number(userPrefs.budgetMax) > 0) {
+    } else if (
+      userPrefs &&
+      userPrefs.budgetMax &&
+      Number(userPrefs.budgetMax) > 0
+    ) {
       catFilter.price = { $lte: Number(userPrefs.budgetMax) };
     }
 
     if (sp.brand) {
-      catFilter.name = { $regex: new RegExp(sp.brand, 'i') };
+      catFilter.name = { $regex: new RegExp(sp.brand, "i") };
     }
 
     products = await Product.find(catFilter).sort(sortOption).limit(20).lean();
@@ -390,13 +639,17 @@ async function queryCatalog(rawSp: any, userId?: string | null) {
 
   // Personalization Brand Boost: Put the user's favorite brands first in the catalog feed
   if (userPrefs && userPrefs.likedBrands && userPrefs.likedBrands.length > 0) {
-    const likedSet = new Set(userPrefs.likedBrands.map((b: string) => b.toLowerCase().trim()));
+    const likedSet = new Set(
+      userPrefs.likedBrands.map((b: string) => b.toLowerCase().trim()),
+    );
     const preferred: any[] = [];
     const others: any[] = [];
 
     products.forEach((p: any) => {
       const nameLower = p.name.toLowerCase();
-      const isPreferred = Array.from(likedSet).some((brand: any) => nameLower.includes(brand));
+      const isPreferred = Array.from(likedSet).some((brand: any) =>
+        nameLower.includes(brand),
+      );
       if (isPreferred) {
         preferred.push(p);
       } else {
@@ -414,86 +667,107 @@ export async function POST(req: Request) {
     const { query, originalQuery, lang, userId, history } = await req.json();
     const userQuery = query || originalQuery;
     if (!userQuery) {
-      return NextResponse.json({ message: 'Query is required' }, { status: 400 });
+      return NextResponse.json(
+        { message: "Query is required" },
+        { status: 400 },
+      );
     }
 
     // Construct the LLM messages list with full conversational history context
-    const llmMessages: any[] = [{ role: 'system', content: systemPrompt1 }];
+    const llmMessages: any[] = [{ role: "system", content: systemPrompt1 }];
 
     if (history && Array.isArray(history)) {
       // Inject the last 6 messages to keep it fast, highly context-aware, and precise
       const recentHistory = history.slice(-6);
       recentHistory.forEach((msg: any) => {
-        if (msg.sender === 'user') {
-          llmMessages.push({ role: 'user', content: msg.content });
-        } else if (msg.sender === 'ai') {
-          if (msg.content && msg.type !== 'search') {
-            llmMessages.push({ role: 'assistant', content: msg.content });
+        if (msg.sender === "user") {
+          llmMessages.push({ role: "user", content: msg.content });
+        } else if (msg.sender === "ai") {
+          if (msg.content && msg.type !== "search") {
+            llmMessages.push({ role: "assistant", content: msg.content });
           }
         }
       });
     }
 
     // Append the current active user query
-    llmMessages.push({ role: 'user', content: userQuery });
+    llmMessages.push({ role: "user", content: userQuery });
 
     // Step 1: Call Llama model to extract structured parameters
     let aiResponse;
     try {
       const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model: "llama-3.3-70b-versatile",
         temperature: 0,
         max_tokens: 1000,
         messages: llmMessages,
       });
-      aiResponse = completion.choices[0]?.message?.content?.trim() || '{}';
+      aiResponse = completion.choices[0]?.message?.content?.trim() || "{}";
     } catch (e) {
       // Fallback model if Llama 70b is rate-limited
       const completion = await groq.chat.completions.create({
-        model: 'llama-3.1-8b-instant',
+        model: "llama-3.1-8b-instant",
         temperature: 0,
         max_tokens: 1000,
         messages: llmMessages,
       });
-      aiResponse = completion.choices[0]?.message?.content?.trim() || '{}';
+      aiResponse = completion.choices[0]?.message?.content?.trim() || "{}";
     }
 
     // Parse JSON safely
     let parsed: any = {};
     try {
-      const cleanJSON = aiResponse.replace(/```json|```/g, '').trim();
+      const cleanJSON = aiResponse.replace(/```json|```/g, "").trim();
       parsed = JSON.parse(cleanJSON);
     } catch {
       // Manual fallback regex parse if JSON is broken
       parsed = {
-        queryType: 'product search',
-        detectedLanguage: lang?.split('-')[0] || 'en',
+        queryType: "product search",
+        detectedLanguage: lang?.split("-")[0] || "en",
         searchParams: { query: userQuery },
       };
     }
 
-    const qType = (parsed.queryType || '').toLowerCase();
+    const qType = (parsed.queryType || "").toLowerCase();
     let products: any[] = [];
 
     // Step 2: Database Catalog Search (if it's a product search query)
-    if (qType.includes('search') || qType.includes('recommend') || qType.includes('comparison') || !qType) {
+    if (
+      qType.includes("search") ||
+      qType.includes("recommend") ||
+      qType.includes("comparison") ||
+      !qType
+    ) {
       try {
         products = await queryCatalog(parsed.searchParams || {}, userId);
 
         // Dynamically learn & update user preferences in the background!
         if (userId && parsed.searchParams) {
           const sp = parsed.searchParams;
-          const userObj = await User.findById(userId);
+          const userObj = (await User.findById(userId).exec()) as
+            | (Document & { preferences?: UserPreferences })
+            | null;
           if (userObj) {
             if (!userObj.preferences) {
-              userObj.preferences = { budgetMin: 0, budgetMax: 0, likedBrands: [], dislikedBrands: [], useCases: [] };
+              userObj.preferences = {
+                budgetMin: 0,
+                budgetMax: 0,
+                likedBrands: [],
+                dislikedBrands: [],
+                useCases: [],
+              };
             }
 
             let updated = false;
             // 1. Learn brand preference
             if (sp.brand) {
               const brandClean = sp.brand.trim();
-              if (brandClean && !userObj.preferences.likedBrands.some((b: string) => b.toLowerCase() === brandClean.toLowerCase())) {
+              if (
+                brandClean &&
+                !userObj.preferences.likedBrands.some(
+                  (b: string) => b.toLowerCase() === brandClean.toLowerCase(),
+                )
+              ) {
                 userObj.preferences.likedBrands.push(brandClean);
                 updated = true;
               }
@@ -502,7 +776,9 @@ export async function POST(req: Request) {
             if (sp.price_max && Number(sp.price_max) > 0) {
               const currentMax = Number(sp.price_max);
               if (userObj.preferences.budgetMax) {
-                userObj.preferences.budgetMax = Math.round((userObj.preferences.budgetMax + currentMax) / 2);
+                userObj.preferences.budgetMax = Math.round(
+                  (userObj.preferences.budgetMax + currentMax) / 2,
+                );
               } else {
                 userObj.preferences.budgetMax = currentMax;
               }
@@ -515,54 +791,58 @@ export async function POST(req: Request) {
           }
         }
       } catch (err) {
-        console.error('Database query failed:', err);
+        console.error("Database query failed:", err);
       }
     }
 
     // Step 3: LLM Conversational Response Generation
-    const foundProductSummaries = products.map(p => `- ${p.name}: ₹${p.price}`).join('\n');
+    const foundProductSummaries = products
+      .map((p) => `- ${p.name}: ₹${p.price}`)
+      .join("\n");
     const step3Prompt = `User Query: "${userQuery}"
 Extracted Language: ${parsed.detectedLanguage}
 Extracted Params: ${JSON.stringify(parsed.searchParams)}
 Number of Products Found: ${products.length}
 Products Found in Database:
-${foundProductSummaries || 'None'}`;
+${foundProductSummaries || "None"}`;
 
-    let generalAnswer = '';
+    let generalAnswer = "";
     try {
       const responseGen = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model: "llama-3.3-70b-versatile",
         temperature: 0.3,
         max_tokens: 800,
         messages: [
-          { role: 'system', content: systemPrompt2 },
-          { role: 'user', content: step3Prompt },
+          { role: "system", content: systemPrompt2 },
+          { role: "user", content: step3Prompt },
         ],
       });
-      generalAnswer = responseGen.choices[0]?.message?.content?.trim() || '';
+      generalAnswer = responseGen.choices[0]?.message?.content?.trim() || "";
     } catch {
       const responseGen = await groq.chat.completions.create({
-        model: 'llama-3.1-8b-instant',
+        model: "llama-3.1-8b-instant",
         temperature: 0.3,
         max_tokens: 800,
         messages: [
-          { role: 'system', content: systemPrompt2 },
-          { role: 'user', content: step3Prompt },
+          { role: "system", content: systemPrompt2 },
+          { role: "user", content: step3Prompt },
         ],
       });
-      generalAnswer = responseGen.choices[0]?.message?.content?.trim() || '';
+      generalAnswer = responseGen.choices[0]?.message?.content?.trim() || "";
     }
 
-    return NextResponse.json({
-      queryType: parsed.queryType || 'product search',
-      detectedLanguage: parsed.detectedLanguage || 'en',
-      searchParams: parsed.searchParams || {},
-      generalAnswer,
-      products,
-    }, { status: 200 });
-
+    return NextResponse.json(
+      {
+        queryType: parsed.queryType || "product search",
+        detectedLanguage: parsed.detectedLanguage || "en",
+        searchParams: parsed.searchParams || {},
+        generalAnswer,
+        products,
+      },
+      { status: 200 },
+    );
   } catch (error: any) {
-    console.error('[/api/ai-search] Error:', error);
+    console.error("[/api/ai-search] Error:", error);
     return NextResponse.json({ message: error.message }, { status: 500 });
   }
 }

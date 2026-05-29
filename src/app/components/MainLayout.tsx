@@ -2924,7 +2924,7 @@ export default function MainLayout({
               <div className="nv-welcome-screen">
                 <div className="nv-welcome-screen__glow-orb" />
                 <div className="nv-welcome-screen__header animate-fade-down">
-                  <div className="nv-welcome-screen__logo glow-brand" style={{ background: "none", boxShadow: "none", width: 72, height: 72, borderRadius: 22, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(6,182,212,0.08) 100%)", border: "1.5px solid rgba(99,102,241,0.2)", boxShadow: "0 12px 40px rgba(79,70,229,0.25)" }}>
+                  <div className="nv-welcome-screen__logo glow-brand" style={{ width: 72, height: 72, borderRadius: 22, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(6,182,212,0.08) 100%)", border: "1.5px solid rgba(99,102,241,0.2)", boxShadow: "0 12px 40px rgba(79,70,229,0.25)" }}>
                     <NuvixLogo size={48} glow={true} />
                   </div>
                   <h2 className="nv-welcome-screen__title">

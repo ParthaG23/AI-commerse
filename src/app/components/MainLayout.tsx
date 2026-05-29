@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { useChatStore, Message } from '../store/chat';
-import { useProductStore } from '../store/product';
-import { useAuthStore } from '../store/auth';
-import { useCartStore } from '../store/cart';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useChatStore, Message } from "../store/chat";
+import { useProductStore } from "../store/product";
+import { useAuthStore } from "../store/auth";
+import { useCartStore } from "../store/cart";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
 import {
   Clipboard,
   Check,
@@ -17,6 +17,7 @@ import {
   MessageCircle,
   X,
   Mic,
+  Mic2,
   MicOff,
   Bot,
   User,
@@ -26,7 +27,7 @@ import {
   Package,
   Volume2,
   VolumeX,
-  Volume1,
+  Headphones,
   Languages,
   Loader2,
   Plus,
@@ -43,101 +44,190 @@ import {
   Eye,
   Star,
   ShoppingBag,
-} from 'lucide-react';
-import { useIsMounted } from '../hooks/useIsMounted';
+} from "lucide-react";
+import { useIsMounted } from "../hooks/useIsMounted";
+import NuvixLogo from "./NuvixLogo";
+
 
 // ─── Suggestion chips ───────────────────────────────────────────────────────
 const SUGGESTION_CHIPS = [
-  { text: 'Smartphones ₹15k', query: 'smartphones under 15000', icon: '📱' },
-  { text: 'Gaming Laptops', query: 'gaming laptops with good graphics', icon: '🎮' },
-  { text: 'Noise-Cancelling', query: 'headphones under 5000 with noise cancelling', icon: '🎧' },
-  { text: 'Smartwatches', query: 'fitness trackers with heart rate monitor', icon: '⌚' },
+  { text: "Smartphones ₹15k", query: "smartphones under 15000", icon: "📱" },
+  {
+    text: "Gaming Laptops",
+    query: "gaming laptops with good graphics",
+    icon: "🎮",
+  },
+  {
+    text: "Noise-Cancelling",
+    query: "headphones under 5000 with noise cancelling",
+    icon: "🎧",
+  },
+  {
+    text: "Smartwatches",
+    query: "fitness trackers with heart rate monitor",
+    icon: "⌚",
+  },
 ];
 
 // ─── Supported languages for display ────────────────────────────────────────
 const SUPPORTED_LANGS = [
-  { code: 'en-IN', label: 'EN' },
-  { code: 'hi-IN', label: 'हिं' },
-  { code: 'ta-IN', label: 'த' },
-  { code: 'te-IN', label: 'తె' },
-  { code: 'mr-IN', label: 'म' },
-  { code: 'bn-IN', label: 'বাং' },
-  { code: 'gu-IN', label: 'ગુ' },
-  { code: 'kn-IN', label: 'ಕ' },
-  { code: 'ml-IN', label: 'മ' },
-  { code: 'pa-IN', label: 'ਪੰ' },
+  { code: "en-IN", label: "EN" },
+  { code: "hi-IN", label: "हिं" },
+  { code: "ta-IN", label: "த" },
+  { code: "te-IN", label: "తె" },
+  { code: "mr-IN", label: "म" },
+  { code: "bn-IN", label: "বাং" },
+  { code: "gu-IN", label: "ગુ" },
+  { code: "kn-IN", label: "ಕ" },
+  { code: "ml-IN", label: "മ" },
+  { code: "pa-IN", label: "ਪੰ" },
 ];
 
 // ─── Synonym map for common misspellings and related terms ───────────────────
 const SYNONYM_MAP: Record<string, string[]> = {
-  'mobile': ['phone', 'smartphone', 'cellphone', 'iphone', 'android', 'mobail', 'mobil', 'fone', 'phon'],
-  'laptop': ['computer', 'notebook', 'laptoop', 'leptop', 'pc', 'laaptop', 'computar'],
-  'headphone': ['earphone', 'headset', 'earbuds', 'earbud', 'headfone', 'hedphone', 'hedfone', 'airpods', 'headfon'],
-  'television': ['tv', 'tele', 'televison', 'telvision', 'smart tv', 'led tv', 'monitor'],
-  'camera': ['camra', 'camara', 'dslr', 'mirrorless', 'camerra'],
-  'shirt': ['t-shirt', 'tshirt', 'tee', 'top', 'polo', 'kurta', 'casual wear', 'shrit', 'shert'],
-  'trouser': ['pant', 'jeans', 'jean', 'pants', 'trousers', 'chino', 'trousar'],
-  'shoes': ['footwear', 'sneaker', 'sneakers', 'sandal', 'sandals', 'chappal', 'boot', 'boots', 'shoos', 'shos'],
-  'watch': ['smartwatch', 'timepiece', 'wrist watch', 'wach', 'ghadi', 'watch'],
-  'refrigerator': ['fridge', 'fridg', 'refregerator', 'refregerater', 'freezer', 'cool box'],
-  'washing machine': ['washer', 'washing macheen', 'washin machine', 'laundry machine'],
-  'air conditioner': ['ac', 'a.c', 'airconditioner', 'air conditoner', 'cooler'],
+  mobile: [
+    "phone",
+    "smartphone",
+    "cellphone",
+    "iphone",
+    "android",
+    "mobail",
+    "mobil",
+    "fone",
+    "phon",
+  ],
+  laptop: [
+    "computer",
+    "notebook",
+    "laptoop",
+    "leptop",
+    "pc",
+    "laaptop",
+    "computar",
+  ],
+  headphone: [
+    "earphone",
+    "headset",
+    "earbuds",
+    "earbud",
+    "headfone",
+    "hedphone",
+    "hedfone",
+    "airpods",
+    "headfon",
+  ],
+  television: [
+    "tv",
+    "tele",
+    "televison",
+    "telvision",
+    "smart tv",
+    "led tv",
+    "monitor",
+  ],
+  camera: ["camra", "camara", "dslr", "mirrorless", "camerra"],
+  shirt: [
+    "t-shirt",
+    "tshirt",
+    "tee",
+    "top",
+    "polo",
+    "kurta",
+    "casual wear",
+    "shrit",
+    "shert",
+  ],
+  trouser: ["pant", "jeans", "jean", "pants", "trousers", "chino", "trousar"],
+  shoes: [
+    "footwear",
+    "sneaker",
+    "sneakers",
+    "sandal",
+    "sandals",
+    "chappal",
+    "boot",
+    "boots",
+    "shoos",
+    "shos",
+  ],
+  watch: ["smartwatch", "timepiece", "wrist watch", "wach", "ghadi", "watch"],
+  refrigerator: [
+    "fridge",
+    "fridg",
+    "refregerator",
+    "refregerater",
+    "freezer",
+    "cool box",
+  ],
+  "washing machine": [
+    "washer",
+    "washing macheen",
+    "washin machine",
+    "laundry machine",
+  ],
+  "air conditioner": [
+    "ac",
+    "a.c",
+    "airconditioner",
+    "air conditoner",
+    "cooler",
+  ],
 };
 
 // ─── Language detection heuristic (script-based) ────────────────────────────
 function detectScript(text: string): string {
-  if (/[\u0900-\u097F]/.test(text)) return 'hi-IN'; // Devanagari (Hindi/Marathi)
-  if (/[\u0B80-\u0BFF]/.test(text)) return 'ta-IN'; // Tamil
-  if (/[\u0C00-\u0C7F]/.test(text)) return 'te-IN'; // Telugu
-  if (/[\u0980-\u09FF]/.test(text)) return 'bn-IN'; // Bengali
-  if (/[\u0A80-\u0AFF]/.test(text)) return 'gu-IN'; // Gujarati
-  if (/[\u0C80-\u0CFF]/.test(text)) return 'kn-IN'; // Kannada
-  if (/[\u0D00-\u0D7F]/.test(text)) return 'ml-IN'; // Malayalam
-  if (/[\u0A00-\u0A7F]/.test(text)) return 'pa-IN'; // Punjabi
-  return 'en-IN';
+  if (/[\u0900-\u097F]/.test(text)) return "hi-IN"; // Devanagari (Hindi/Marathi)
+  if (/[\u0B80-\u0BFF]/.test(text)) return "ta-IN"; // Tamil
+  if (/[\u0C00-\u0C7F]/.test(text)) return "te-IN"; // Telugu
+  if (/[\u0980-\u09FF]/.test(text)) return "bn-IN"; // Bengali
+  if (/[\u0A80-\u0AFF]/.test(text)) return "gu-IN"; // Gujarati
+  if (/[\u0C80-\u0CFF]/.test(text)) return "kn-IN"; // Kannada
+  if (/[\u0D00-\u0D7F]/.test(text)) return "ml-IN"; // Malayalam
+  if (/[\u0A00-\u0A7F]/.test(text)) return "pa-IN"; // Punjabi
+  return "en-IN";
 }
 
 // ─── Normalize query: fix common misspellings & expand synonyms ──────────────
 function normalizeQuery(query: string): string {
   let normalized = query.toLowerCase().trim();
-  normalized = normalized.replace(/\s+/g, ' ');
+  normalized = normalized.replace(/\s+/g, " ");
   const corrections: [RegExp, any][] = [
-    [/\bfone\b/g, 'phone'],
-    [/\bphon\b/g, 'phone'],
-    [/\bmobail\b/g, 'mobile'],
-    [/\bmobil\b/g, 'mobile'],
-    [/\bleptop\b/g, 'laptop'],
-    [/\blaptoop\b/g, 'laptop'],
-    [/\blaaptop\b/g, 'laptop'],
-    [/\bcomputar\b/g, 'computer'],
-    [/\bhedfone\b/g, 'headphone'],
-    [/\bhedphone\b/g, 'headphone'],
-    [/\bheadfone\b/g, 'headphone'],
-    [/\bearfone\b/g, 'earphone'],
-    [/\bcamra\b/g, 'camera'],
-    [/\bcamara\b/g, 'camera'],
-    [/\bshrit\b/g, 'shirt'],
-    [/\bshert\b/g, 'shirt'],
-    [/\bprise\b/g, 'price'],
-    [/\bpric\b/g, 'price'],
-    [/\bprice\b/g, 'price'],
-    [/\bcheap\b/g, 'budget'],
-    [/\bsasta\b/g, 'budget low price'],
-    [/\bmehenga\b/g, 'premium high price'],
-    [/\bacha\b/g, 'good quality'],
-    [/\baccha\b/g, 'good quality'],
-    [/\bbest wala\b/g, 'best'],
-    [/\bsabse\b/g, 'most'],
-    [/\bunder\b/g, 'under'],
-    [/\bse kam\b/g, 'under'],
-    [/\bse zyada\b/g, 'above'],
-    [/\bke neeche\b/g, 'under'],
-    [/\bk niche\b/g, 'under'],
-    [/\brupee\b/g, '₹'],
-    [/\brupees\b/g, '₹'],
-    [/\brupiya\b/g, '₹'],
-    [/\brs\b/g, '₹'],
-    [/\bk\b(?=\s*\d|\d)/g, '000'],
+    [/\bfone\b/g, "phone"],
+    [/\bphon\b/g, "phone"],
+    [/\bmobail\b/g, "mobile"],
+    [/\bmobil\b/g, "mobile"],
+    [/\bleptop\b/g, "laptop"],
+    [/\blaptoop\b/g, "laptop"],
+    [/\blaaptop\b/g, "laptop"],
+    [/\bcomputar\b/g, "computer"],
+    [/\bhedfone\b/g, "headphone"],
+    [/\bhedphone\b/g, "headphone"],
+    [/\bheadfone\b/g, "headphone"],
+    [/\bearfone\b/g, "earphone"],
+    [/\bcamra\b/g, "camera"],
+    [/\bcamara\b/g, "camera"],
+    [/\bshrit\b/g, "shirt"],
+    [/\bshert\b/g, "shirt"],
+    [/\bprise\b/g, "price"],
+    [/\bpric\b/g, "price"],
+    [/\bprice\b/g, "price"],
+    [/\bcheap\b/g, "budget"],
+    [/\bsasta\b/g, "budget low price"],
+    [/\bmehenga\b/g, "premium high price"],
+    [/\bacha\b/g, "good quality"],
+    [/\baccha\b/g, "good quality"],
+    [/\bbest wala\b/g, "best"],
+    [/\bsabse\b/g, "most"],
+    [/\bunder\b/g, "under"],
+    [/\bse kam\b/g, "under"],
+    [/\bse zyada\b/g, "above"],
+    [/\bke neeche\b/g, "under"],
+    [/\bk niche\b/g, "under"],
+    [/\brupee\b/g, "₹"],
+    [/\brupees\b/g, "₹"],
+    [/\brupiya\b/g, "₹"],
+    [/\brs\b/g, "₹"],
+    [/\bk\b(?=\s*\d|\d)/g, "000"],
     [/(\d+)\s*k\b/g, (m: any, n: any) => String(parseInt(n) * 1000)],
     [/(\d+)\s*lakh\b/g, (m: any, n: any) => String(parseInt(n) * 100000)],
     [/(\d+)\s*lac\b/g, (m: any, n: any) => String(parseInt(n) * 100000)],
@@ -148,6 +238,41 @@ function normalizeQuery(query: string): string {
   return normalized;
 }
 
+// ─── TTS Summary: extract clean 1-2 sentence digest for audio reading ─────────
+function getTTSSummary(text: string, maxChars = 180): string {
+  // Strip markdown symbols, currency signs, emojis, URLs, bullet chars
+  let clean = text
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[*_`#>~|\-\[\]()]/g, "")
+    .replace(/[₹$€£¥]/g, "")
+    .replace(/[\u{1F300}-\u{1FFFF}]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Split into sentences
+  const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
+
+  // Take first 2 sentences, ensure within maxChars
+  let summary = "";
+  for (let i = 0; i < Math.min(2, sentences.length); i++) {
+    const next = summary + sentences[i].trim() + " ";
+    if (next.trim().length <= maxChars) {
+      summary = next;
+    } else {
+      break;
+    }
+  }
+
+  summary = summary.trim();
+
+  // If still too long, hard truncate at word boundary
+  if (summary.length > maxChars) {
+    summary = summary.substring(0, maxChars).replace(/\s\S*$/, "") + "…";
+  }
+
+  return summary || clean.substring(0, maxChars);
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 type SearchParams = Record<string, string | number | string[]>;
 
@@ -155,7 +280,9 @@ type SearchParams = Record<string, string | number | string[]>;
 function TypingDots() {
   return (
     <div className="nv-typing-dots" aria-label="AI is thinking">
-      <span /><span /><span />
+      <span />
+      <span />
+      <span />
     </div>
   );
 }
@@ -163,38 +290,73 @@ function TypingDots() {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function formatParamLabel(key: string): string {
   const labels: Record<string, string> = {
-    category: 'Category', price_min: 'Min price', price_max: 'Max price',
-    features: 'Features', query: 'Search', brand: 'Brand',
-    rating: 'Min rating', sort: 'Sort by', color: 'Color',
-    fuzzy_terms: 'Also checking',
+    category: "Category",
+    price_min: "Min price",
+    price_max: "Max price",
+    features: "Features",
+    query: "Search",
+    brand: "Brand",
+    rating: "Min rating",
+    sort: "Sort by",
+    color: "Color",
+    fuzzy_terms: "Also checking",
   };
-  return labels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return (
+    labels[key] ??
+    key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
 }
 
-function formatParamValue(key: string, value: string | number | string[]): string {
-  if (Array.isArray(value)) return value.slice(0, 3).join(', ');
-  if ((key === 'price_min' || key === 'price_max') && typeof value === 'number') {
-    return value === 0 ? '₹0' : `₹${value.toLocaleString('en-IN')}`;
+function formatParamValue(
+  key: string,
+  value: string | number | string[],
+): string {
+  if (Array.isArray(value)) return value.slice(0, 3).join(", ");
+  if (
+    (key === "price_min" || key === "price_max") &&
+    typeof value === "number"
+  ) {
+    return value === 0 ? "₹0" : `₹${value.toLocaleString("en-IN")}`;
   }
   return String(value);
 }
 
 // ─── Search card ──────────────────────────────────────────────────────────────
-function SearchCard({ params, query, loading }: { params: SearchParams; query: string; loading: boolean }) {
-  const showKeys = ['category', 'price_min', 'price_max', 'color', 'brand', 'features', 'sort'];
+function SearchCard({
+  params,
+  query,
+  loading,
+}: {
+  params: SearchParams;
+  query: string;
+  loading: boolean;
+}) {
+  const showKeys = [
+    "category",
+    "price_min",
+    "price_max",
+    "color",
+    "brand",
+    "features",
+    "sort",
+  ];
   const entries = Object.entries(params).filter(([k, v]) => {
     if (!showKeys.includes(k)) return false;
     if (Array.isArray(v)) return v.length > 0;
-    return v !== '' && v !== null && v !== undefined && v !== 0;
+    return v !== "" && v !== null && v !== undefined && v !== 0;
   });
 
   return (
     <div className="nv-search-card">
       <div className="nv-search-card__header">
-        <div className="nv-search-card__icon-wrap"><Search size={13} /></div>
+        <div className="nv-search-card__icon-wrap">
+          <Search size={13} />
+        </div>
         <div className="min-w-0 flex-1">
           <p className="nv-search-card__title">Searching Nuvix Catalog</p>
-          <p className="nv-search-card__query" title={query}>"{query}"</p>
+          <p className="nv-search-card__query" title={query}>
+            "{query}"
+          </p>
         </div>
         {loading ? (
           <div className="nv-search-card__spinner animate-spin" />
@@ -208,8 +370,12 @@ function SearchCard({ params, query, loading }: { params: SearchParams; query: s
         <div className="nv-search-card__params">
           {entries.map(([k, v]) => (
             <div key={k} className="nv-search-card__param">
-              <span className="nv-search-card__param-key">{formatParamLabel(k)}</span>
-              <span className="nv-search-card__param-val">{formatParamValue(k, v)}</span>
+              <span className="nv-search-card__param-key">
+                {formatParamLabel(k)}
+              </span>
+              <span className="nv-search-card__param-val">
+                {formatParamValue(k, v)}
+              </span>
             </div>
           ))}
         </div>
@@ -223,7 +389,9 @@ function SearchCard({ params, query, loading }: { params: SearchParams; query: s
         ) : (
           <>
             <Check size={10} className="text-emerald-500" />
-            <span style={{ color: '#10b981', fontWeight: 600 }}>Query executed successfully</span>
+            <span style={{ color: "#10b981", fontWeight: 600 }}>
+              Query executed successfully
+            </span>
           </>
         )}
       </div>
@@ -233,57 +401,95 @@ function SearchCard({ params, query, loading }: { params: SearchParams; query: s
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 function MessageBubble({
-  message, index, isCopied, onCopy, onSpeak, isSpeaking, loading, onAddToCart,
+  message,
+  index,
+  isCopied,
+  onCopy,
+  onSpeak,
+  isSpeaking,
+  loading,
+  onAddToCart,
 }: {
-  message: Message; index: number; isCopied: boolean;
+  message: Message;
+  index: number;
+  isCopied: boolean;
   onCopy: (text: string, i: number) => void;
   onSpeak: (text: string, lang: string) => void;
   isSpeaking: boolean;
   loading: boolean;
   onAddToCart: (p: any) => void;
 }) {
-  const isUser = message.sender === 'user';
-  const isSearch = message.type === 'search' && message.searchParams;
+  const isUser = message.sender === "user";
+  const isSearch = message.type === "search" && message.searchParams;
+  // Generate a short TTS-friendly summary (1-2 sentences)
+  const ttsSummary = getTTSSummary(message.content);
+  const isLongMessage = message.content.length > ttsSummary.length + 10;
 
   return (
-    <div className={`nv-msg-row ${isUser ? 'nv-msg-row--user animate-slide-right' : 'nv-msg-row--ai animate-slide-left'}`}>
+    <div
+      className={`nv-msg-row ${isUser ? "nv-msg-row--user animate-slide-right" : "nv-msg-row--ai animate-slide-left"}`}
+    >
       {!isUser && (
         <div className="nv-msg-avatar nv-msg-avatar--ai glow-brand">
-          <Sparkles size={13} className="text-cyan-200" />
+          <div className="nv-brand-icon nv-brand-icon--sm">
+            <Sparkles size={11} className="text-white" />
+          </div>
         </div>
       )}
       {isSearch ? (
         <div className="nv-search-card-wrapper">
-          <SearchCard params={message.searchParams!} query={message.content} loading={loading} />
-          
+          <SearchCard
+            params={message.searchParams!}
+            query={message.content}
+            loading={loading}
+          />
+
           {/* Snapped horizontal product carousel directly inside message bubble */}
           {message.products && message.products.length > 0 && (
             <div className="nv-inline-carousel-wrapper animate-fade-up">
               <div className="nv-inline-carousel scrollbar-hide">
                 {message.products.map((p: any) => {
                   const originalPrice = Math.floor(p.price * 1.38);
-                  const discount = Math.round(((originalPrice - p.price) / originalPrice) * 100);
+                  const discount = Math.round(
+                    ((originalPrice - p.price) / originalPrice) * 100,
+                  );
                   return (
-                    <div key={p._id} className="nv-carousel-card surface surface-hover">
+                    <div
+                      key={p._id}
+                      className="nv-carousel-card surface surface-hover"
+                    >
                       <div className="nv-carousel-card__img-wrap">
-                        <img src={p.images[0] || '/placeholder.png'} alt={p.name} className="nv-carousel-card__img" loading="lazy" />
-                        <span className="nv-carousel-card__discount">{discount}% OFF</span>
+                        <img
+                          src={p.images[0] || "/placeholder.png"}
+                          alt={p.name}
+                          className="nv-carousel-card__img"
+                          loading="lazy"
+                        />
+                        <span className="nv-carousel-card__discount">
+                          {discount}% OFF
+                        </span>
                       </div>
                       <div className="nv-carousel-card__content">
-                        <h4 className="nv-carousel-card__title" title={p.name}>{p.name}</h4>
+                        <h4 className="nv-carousel-card__title" title={p.name}>
+                          {p.name}
+                        </h4>
                         <div className="nv-carousel-card__price-row">
-                          <span className="nv-carousel-card__price">₹{p.price.toLocaleString('en-IN')}</span>
-                          <span className="nv-carousel-card__price-old">₹{originalPrice.toLocaleString('en-IN')}</span>
+                          <span className="nv-carousel-card__price">
+                            ₹{p.price.toLocaleString("en-IN")}
+                          </span>
+                          <span className="nv-carousel-card__price-old">
+                            ₹{originalPrice.toLocaleString("en-IN")}
+                          </span>
                         </div>
                         <div className="nv-carousel-card__actions">
-                          <button 
+                          <button
                             onClick={() => onAddToCart(p)}
                             className="nv-carousel-card__btn nv-carousel-card__btn--buy"
                           >
                             <ShoppingCart size={9} />
                             <span>Add</span>
                           </button>
-                          <Link 
+                          <Link
                             href={`/products/${p._id}`}
                             className="nv-carousel-card__btn nv-carousel-card__btn--view"
                           >
@@ -299,15 +505,19 @@ function MessageBubble({
           )}
         </div>
       ) : (
-        <div className={`nv-msg-bubble ${isUser ? 'nv-msg-bubble--user' : 'nv-msg-bubble--ai'}`}>
+        <div
+          className={`nv-msg-bubble ${isUser ? "nv-msg-bubble--user" : "nv-msg-bubble--ai"}`}
+        >
           <p className="nv-msg-text">{message.content}</p>
           <div className="nv-bubble-actions">
             {!isUser && (
               <button
-                className={`nv-action-btn${isSpeaking ? ' nv-action-btn--active' : ''}`}
-                onClick={() => onSpeak(message.content, message.language || 'en-IN')}
-                aria-label={isSpeaking ? 'Stop speaking' : 'Listen to message'}
-                title={isSpeaking ? 'Stop' : 'Listen'}
+                className={`nv-action-btn${isSpeaking ? " nv-action-btn--active" : ""}`}
+                onClick={() =>
+                  onSpeak(ttsSummary, message.language || "en-IN")
+                }
+                aria-label={isSpeaking ? "Stop speaking" : "Listen to summary"}
+                title={isSpeaking ? "Stop" : isLongMessage ? "Listen (summary)" : "Listen"}
               >
                 {isSpeaking ? <VolumeX size={9} /> : <Volume2 size={9} />}
               </button>
@@ -315,48 +525,68 @@ function MessageBubble({
             <button
               className="nv-action-btn"
               onClick={() => onCopy(message.content, index)}
-              aria-label={isCopied ? 'Copied!' : 'Copy message'}
+              aria-label={isCopied ? "Copied!" : "Copy message"}
               title="Copy"
             >
-              {isCopied ? <Check size={9} className="nv-copy-icon--done" /> : <Clipboard size={9} />}
+              {isCopied ? (
+                <Check size={9} className="nv-copy-icon--done" />
+              ) : (
+                <Clipboard size={9} />
+              )}
             </button>
           </div>
+          {/* Summary indicator badge for long messages */}
+          {!isUser && isSpeaking && isLongMessage && (
+            <div className="nv-tts-badge">🔊 Playing summary</div>
+          )}
         </div>
       )}
-      {isUser && <div className="nv-msg-avatar nv-msg-avatar--user"><User size={13} /></div>}
+      {isUser && (
+        <div className="nv-msg-avatar nv-msg-avatar--user">
+          <User size={13} />
+        </div>
+      )}
     </div>
   );
 }
 
 // ChatMessage type replaced by imported Message type from store
 
-
 // ─── Main export ──────────────────────────────────────────────────────────────
-export default function MainLayout({ children }: { children: React.ReactNode }) {
-  const { 
-    threads, 
-    activeThreadId, 
-    inputValue, 
-    addMessage, 
-    setInputValue, 
-    createThread, 
-    switchThread, 
+export default function MainLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const {
+    threads,
+    activeThreadId,
+    inputValue,
+    addMessage,
+    setInputValue,
+    createThread,
+    switchThread,
     deleteThread,
     updateActiveThreadProducts,
     clearMessages,
     sidebarCollapsed,
-    toggleSidebar
+    toggleSidebar,
   } = useChatStore();
   const { user, logout } = useAuthStore();
   const { addToCart } = useCartStore();
-  const userKey = user?.email || 'anonymous';
+  const userKey = user?.email || "anonymous";
 
   // Load threads
   const currentThreads = threads[userKey] || [];
   const activeId = activeThreadId[userKey];
-  const activeThread = currentThreads.find((t) => t.id === activeId) || currentThreads[0];
-  const messages = activeThread ? activeThread.messages : ([{ sender: 'ai', content: 'Hi there! What are you looking for today?' }] as Message[]);
-  
+  const activeThread =
+    currentThreads.find((t) => t.id === activeId) || currentThreads[0];
+  const messages = activeThread
+    ? activeThread.messages
+    : ([
+        { sender: "ai", content: "Hi there! What are you looking for today?" },
+      ] as Message[]);
+
   const { setProducts, setSearchQuery } = useProductStore();
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -372,42 +602,46 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [ttsSupported, setTtsSupported] = useState(false);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
-  const [selectedLang, setSelectedLang] = useState('en-IN');
+  const [selectedLang, setSelectedLang] = useState("en-IN");
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const [transcript, setTranscript] = useState("");
   const [processingVoice, setProcessingVoice] = useState(false);
 
   // Expanded layouts & ratios
-  const [showShelf, setShowShelf] = useState(true);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const pathname = usePathname();
+  const isProductDetailPage = pathname?.startsWith("/products/");
+  const [showShelf, setShowShelf] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [prevProductCount, setPrevProductCount] = useState(0);
 
   // ChatGPT-style Continuous Voice Conversation Overlay states
   const [isVoiceConvOpen, setIsVoiceConvOpen] = useState(false);
-  const [voiceConvState, setVoiceConvState] = useState<'listening' | 'thinking' | 'speaking' | 'paused'>('listening');
-  const [voiceConvTranscript, setVoiceConvTranscript] = useState('');
+  const [voiceConvState, setVoiceConvState] = useState<
+    "listening" | "thinking" | "speaking" | "paused"
+  >("listening");
+  const [voiceConvTranscript, setVoiceConvTranscript] = useState("");
 
   const isMounted = useIsMounted();
   const router = useRouter();
 
   // Initialize theme tracking
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const isDark = document.documentElement.classList.contains('dark');
-      setTheme(isDark ? 'dark' : 'light');
+    if (typeof window !== "undefined") {
+      const isDark = document.documentElement.classList.contains("dark");
+      setTheme(isDark ? "dark" : "light");
     }
   }, []);
 
   const toggleTheme = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
+    const nextTheme = theme === "light" ? "dark" : "light";
     setTheme(nextTheme);
-    if (nextTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
+    if (nextTheme === "dark") {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
     } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
     }
   };
 
@@ -438,48 +672,65 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   // Auto-scroll chat
   useEffect(() => {
-    chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' });
+    chatContainerRef.current?.scrollTo({
+      top: chatContainerRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages, isThinking, isMobileChatOpen]);
 
   // Speech service initialization
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (typeof window === "undefined") return;
+    const SR =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     if (SR) setVoiceSupported(true);
-    if ('speechSynthesis' in window) {
+    if ("speechSynthesis" in window) {
       synthRef.current = window.speechSynthesis;
       setTtsSupported(true);
     }
   }, []);
 
-  const buildRecognition = useCallback((lang: string) => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return null;
-    const rec = new SR();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = lang;
-    rec.onstart = () => { setIsListening(true); setTranscript(''); };
-    rec.onresult = (e: any) => {
-      let interim = '';
-      let final = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += t;
-        else interim += t;
-      }
-      const detected = detectScript(final || interim);
-      if (detected !== 'en-IN' && detected !== selectedLang) setSelectedLang(detected);
-      setTranscript(final || interim);
-      if (final) setInputValue(final);
-    };
-    rec.onerror = () => { setIsListening(false); setTranscript(''); };
-    rec.onend = () => {
-      setIsListening(false);
-      if (isVoiceMode) setProcessingVoice(true);
-    };
-    return rec;
-  }, [selectedLang, isVoiceMode, setInputValue]);
+  const buildRecognition = useCallback(
+    (lang: string) => {
+      const SR =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
+      if (!SR) return null;
+      const rec = new SR();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = lang;
+      rec.onstart = () => {
+        setIsListening(true);
+        setTranscript("");
+      };
+      rec.onresult = (e: any) => {
+        let interim = "";
+        let final = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) final += t;
+          else interim += t;
+        }
+        const detected = detectScript(final || interim);
+        if (detected !== "en-IN" && detected !== selectedLang)
+          setSelectedLang(detected);
+        setTranscript(final || interim);
+        if (final) setInputValue(final);
+      };
+      rec.onerror = () => {
+        setIsListening(false);
+        setTranscript("");
+      };
+      rec.onend = () => {
+        setIsListening(false);
+        if (isVoiceMode) setProcessingVoice(true);
+      };
+      return rec;
+    },
+    [selectedLang, isVoiceMode, setInputValue],
+  );
 
   useEffect(() => {
     if (processingVoice && inputValue.trim()) {
@@ -491,11 +742,16 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   }, [processingVoice]);
 
   const startListening = useCallback(() => {
-    if (isListening) { recognitionRef.current?.stop(); return; }
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
     const rec = buildRecognition(selectedLang);
     if (!rec) return;
     recognitionRef.current = rec;
-    try { rec.start(); } catch {}
+    try {
+      rec.start();
+    } catch {}
   }, [isListening, buildRecognition, selectedLang]);
 
   const stopSpeaking = useCallback(() => {
@@ -503,19 +759,47 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     setSpeakingIndex(null);
   }, []);
 
-  const speakMessage = useCallback((text: string, lang: string, index?: number) => {
-    if (!ttsSupported) return;
-    if (speakingIndex !== null) { stopSpeaking(); return; }
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = lang.includes('-') ? lang : lang + '-IN';
-    utt.rate = 0.95;
-    utt.pitch = 1.0;
-    utt.onend = () => setSpeakingIndex(null);
-    utt.onerror = () => setSpeakingIndex(null);
-    utteranceRef.current = utt;
-    if (index !== undefined) setSpeakingIndex(index);
-    synthRef.current?.speak(utt);
-  }, [ttsSupported, speakingIndex, stopSpeaking]);
+  const speakMessage = useCallback(
+    (text: string, lang: string, index?: number) => {
+      if (!ttsSupported || !synthRef.current) return;
+      // If already speaking, stop and return (toggle off)
+      if (speakingIndex !== null) {
+        stopSpeaking();
+        return;
+      }
+      // Cancel any previous pending speech
+      synthRef.current.cancel();
+
+      const doSpeak = () => {
+        const utt = new SpeechSynthesisUtterance(text);
+        utt.lang = lang.includes("-") ? lang : lang + "-IN";
+        utt.rate = 0.92;
+        utt.pitch = 1.0;
+        utt.volume = 1.0;
+        utt.onstart = () => {
+          if (index !== undefined) setSpeakingIndex(index);
+        };
+        utt.onend = () => setSpeakingIndex(null);
+        utt.onerror = (e) => {
+          if (e.error !== "interrupted") setSpeakingIndex(null);
+        };
+        utteranceRef.current = utt;
+        if (index !== undefined) setSpeakingIndex(index);
+        synthRef.current?.speak(utt);
+      };
+
+      // Ensure voices are loaded before speaking
+      const voices = synthRef.current.getVoices();
+      if (voices.length > 0) {
+        doSpeak();
+      } else {
+        synthRef.current.onvoiceschanged = () => {
+          doSpeak();
+        };
+      }
+    },
+    [ttsSupported, speakingIndex, stopSpeaking],
+  );
 
   const handleCopy = useCallback((text: string, index: number) => {
     navigator.clipboard.writeText(text).catch(() => {});
@@ -547,7 +831,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     setTimeout(() => {
       const remainingThreads = useChatStore.getState().threads[userKey] || [];
       const newActiveId = useChatStore.getState().activeThreadId[userKey];
-      const newActiveThread = remainingThreads.find(t => t.id === newActiveId);
+      const newActiveThread = remainingThreads.find(
+        (t) => t.id === newActiveId,
+      );
       if (newActiveThread) {
         setProducts(newActiveThread.products || []);
       } else {
@@ -559,8 +845,8 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   // ─── ChatGPT-style Continuous Voice Conversation Loop Logic ─────────────────
   const startVoiceConversation = () => {
     setIsVoiceConvOpen(true);
-    setVoiceConvState('listening');
-    setVoiceConvTranscript('');
+    setVoiceConvState("listening");
+    setVoiceConvTranscript("");
     stopSpeaking();
     setIsVoiceMode(true); // Engages auto-speech synthesis responses
 
@@ -571,7 +857,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   };
 
   const triggerVoiceConvListen = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
     if (!SR) return;
 
     stopSpeaking();
@@ -580,31 +868,35 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     rec.interimResults = true;
     rec.lang = selectedLang;
 
+    let finalVoiceConvTranscript = "";
+
     rec.onstart = () => {
-      setVoiceConvState('listening');
-      setVoiceConvTranscript('');
+      setVoiceConvState("listening");
+      setVoiceConvTranscript("");
+      finalVoiceConvTranscript = "";
     };
 
     rec.onresult = (e: any) => {
-      let interim = '';
-      let final = '';
+      let interim = "";
+      let final = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
         if (e.results[i].isFinal) final += t;
         else interim += t;
       }
-      setVoiceConvTranscript(final || interim);
+      finalVoiceConvTranscript = final || interim;
+      setVoiceConvTranscript(finalVoiceConvTranscript);
     };
 
     rec.onerror = (err: any) => {
-      console.error('Continuous voice loop error:', err);
+      console.error("Continuous voice loop error:", err);
     };
 
     rec.onend = () => {
-      const finalQuery = voiceConvTranscript.trim();
+      const finalQuery = finalVoiceConvTranscript.trim();
       // If user spoke something, compile and send to search API
       if (finalQuery) {
-        setVoiceConvState('thinking');
+        setVoiceConvState("thinking");
         handleSendVoiceConvMessage(finalQuery);
       } else {
         // If user remained silent, check overlay state and restart listening
@@ -628,98 +920,150 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     const normalizedQuery = normalizeQuery(text);
     const detectedLang = detectScript(text);
 
-    addMessage({ sender: 'user', content: text, type: 'text', language: detectedLang }, userKey);
+    addMessage(
+      { sender: "user", content: text, type: "text", language: detectedLang },
+      userKey,
+    );
     setIsThinking(true);
 
     try {
-      const activeMsgs = useChatStore.getState().threads[userKey]?.find(t => t.id === useChatStore.getState().activeThreadId[userKey])?.messages || [];
+      const activeMsgs =
+        useChatStore
+          .getState()
+          .threads[
+            userKey
+          ]?.find((t) => t.id === useChatStore.getState().activeThreadId[userKey])
+          ?.messages || [];
       const rawHistory = activeMsgs.map((m: any) => ({
         sender: m.sender,
         content: m.content,
-        type: m.type || 'text'
+        type: m.type || "text",
       }));
 
-      const aiRes = await fetch('/api/ai-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const aiRes = await fetch("/api/ai-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: text,
           normalizedQuery,
           lang: detectedLang,
           userId: user?._id || null,
-          history: rawHistory
+          history: rawHistory,
         }),
       });
 
       if (aiRes.ok) {
         const d = await aiRes.json();
-        const qType = (d.queryType || '').toLowerCase();
-        const respLang = d.detectedLanguage || detectedLang.split('-')[0];
-        const fullLang = respLang + '-IN';
+        const qType = (d.queryType || "").toLowerCase();
+        const respLang = d.detectedLanguage || detectedLang.split("-")[0];
+        const fullLang = respLang + "-IN";
 
-        let answer = '';
-        if (qType.includes('general') || qType.includes('greeting') || qType.includes('comparison')) {
-          answer = d.generalAnswer || 'I found some information for you.';
-          addMessage({ sender: 'ai', content: answer, type: 'text', language: fullLang }, userKey);
+        let answer = "";
+        if (
+          qType.includes("general") ||
+          qType.includes("greeting") ||
+          qType.includes("comparison")
+        ) {
+          answer = d.generalAnswer || "I found some information for you.";
+          addMessage(
+            { sender: "ai", content: answer, type: "text", language: fullLang },
+            userKey,
+          );
         } else {
           const sp = d.searchParams || {};
           const products = d.products || [];
           setProducts(products);
-          setSearchQuery('');
+          setSearchQuery("");
 
           updateActiveThreadProducts(products, userKey);
-          addMessage({ sender: 'ai', content: text, type: 'search', searchParams: sp, products, language: fullLang }, userKey);
+          addMessage(
+            {
+              sender: "ai",
+              content: text,
+              type: "search",
+              searchParams: sp,
+              products,
+              language: fullLang,
+            },
+            userKey,
+          );
 
-          answer = d.generalAnswer || `I discovered ${products.length} matching products in the Nuvix catalog.`;
-          addMessage({ sender: 'ai', content: answer, type: 'text', language: fullLang }, userKey);
+          answer =
+            d.generalAnswer ||
+            `I discovered ${products.length} matching products in the Nuvix catalog.`;
+          addMessage(
+            { sender: "ai", content: answer, type: "text", language: fullLang },
+            userKey,
+          );
         }
 
         // Advance to speaking synthesis
-        setVoiceConvState('speaking');
+        setVoiceConvState("speaking");
         setVoiceConvTranscript(answer);
         speakVoiceConvResponse(answer, fullLang);
       } else {
-        const err = 'Sorry, Nuvix AI had trouble handling that request.';
-        addMessage({ sender: 'ai', content: err, type: 'text' }, userKey);
-        setVoiceConvState('speaking');
+        const err = "Sorry, Nuvix AI had trouble handling that request.";
+        addMessage({ sender: "ai", content: err, type: "text" }, userKey);
+        setVoiceConvState("speaking");
         setVoiceConvTranscript(err);
-        speakVoiceConvResponse(err, 'en-IN');
+        speakVoiceConvResponse(err, "en-IN");
       }
     } catch {
-      const err = 'Network connection dropped. Please try again.';
-      addMessage({ sender: 'ai', content: err, type: 'text' }, userKey);
-      setVoiceConvState('speaking');
+      const err = "Network connection dropped. Please try again.";
+      addMessage({ sender: "ai", content: err, type: "text" }, userKey);
+      setVoiceConvState("speaking");
       setVoiceConvTranscript(err);
-      speakVoiceConvResponse(err, 'en-IN');
+      speakVoiceConvResponse(err, "en-IN");
     } finally {
       setIsThinking(false);
     }
   };
 
   const speakVoiceConvResponse = (text: string, lang: string) => {
-    if (!ttsSupported || !synthRef.current) return;
+    if (!ttsSupported || !synthRef.current) {
+      // Fall back to just restarting listening loop
+      setVoiceConvState("listening");
+      setVoiceConvTranscript("");
+      setTimeout(() => triggerVoiceConvListen(), 800);
+      return;
+    }
 
     synthRef.current.cancel();
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = lang.includes('-') ? lang : lang + '-IN';
-    utt.rate = 0.95;
-    utt.pitch = 1.0;
 
-    utt.onend = () => {
-      // Loop back to continuous hands-free listening!
-      setVoiceConvState('listening');
-      setVoiceConvTranscript('');
-      triggerVoiceConvListen();
+    const doSpeak = () => {
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.lang = lang.includes("-") ? lang : lang + "-IN";
+      utt.rate = 0.92;
+      utt.pitch = 1.0;
+      utt.volume = 1.0;
+
+      utt.onend = () => {
+        // Loop back to continuous hands-free listening!
+        setVoiceConvState("listening");
+        setVoiceConvTranscript("");
+        triggerVoiceConvListen();
+      };
+
+      utt.onerror = (e) => {
+        if (e.error === "interrupted") return;
+        setVoiceConvState("listening");
+        setVoiceConvTranscript("");
+        setTimeout(() => triggerVoiceConvListen(), 800);
+      };
+
+      utteranceRef.current = utt;
+      synthRef.current?.speak(utt);
     };
 
-    utt.onerror = () => {
-      setVoiceConvState('listening');
-      setVoiceConvTranscript('');
-      triggerVoiceConvListen();
-    };
-
-    utteranceRef.current = utt;
-    synthRef.current.speak(utt);
+    // Ensure voices are loaded before speaking
+    const voices = synthRef.current.getVoices();
+    if (voices.length > 0) {
+      doSpeak();
+    } else {
+      synthRef.current.onvoiceschanged = () => {
+        doSpeak();
+      };
+    }
   };
 
   const endVoiceConversation = () => {
@@ -731,83 +1075,153 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       } catch {}
     }
     setIsVoiceConvOpen(false);
-    setVoiceConvTranscript('');
+    setVoiceConvTranscript("");
     setIsVoiceMode(false);
   };
 
   // ─── Core send logic ────────────────────────────────────────────────────────
-  const handleSendMessage = useCallback(async (textToSend?: string) => {
-    const rawQuery = textToSend || inputValue;
-    if (!rawQuery.trim() || isThinking) return;
+  const handleSendMessage = useCallback(
+    async (textToSend?: string) => {
+      const rawQuery = textToSend || inputValue;
+      if (!rawQuery.trim() || isThinking) return;
 
-    const normalizedQuery = normalizeQuery(rawQuery);
-    const detectedLang = detectScript(rawQuery);
+      const normalizedQuery = normalizeQuery(rawQuery);
+      const detectedLang = detectScript(rawQuery);
 
-    addMessage({ sender: 'user', content: rawQuery, type: 'text', language: detectedLang }, userKey);
-    setInputValue('');
-    setIsThinking(true);
+      addMessage(
+        {
+          sender: "user",
+          content: rawQuery,
+          type: "text",
+          language: detectedLang,
+        },
+        userKey,
+      );
+      setInputValue("");
+      setIsThinking(true);
 
-    try {
-      const activeMsgs = useChatStore.getState().threads[userKey]?.find(t => t.id === useChatStore.getState().activeThreadId[userKey])?.messages || [];
-      const rawHistory = activeMsgs.map((m: any) => ({
-        sender: m.sender,
-        content: m.content,
-        type: m.type || 'text'
-      }));
+      try {
+        const activeMsgs =
+          useChatStore
+            .getState()
+            .threads[
+              userKey
+            ]?.find((t) => t.id === useChatStore.getState().activeThreadId[userKey])
+            ?.messages || [];
+        const rawHistory = activeMsgs.map((m: any) => ({
+          sender: m.sender,
+          content: m.content,
+          type: m.type || "text",
+        }));
 
-      const aiRes = await fetch('/api/ai-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: rawQuery,
-          normalizedQuery,
-          lang: detectedLang,
-          userId: user?._id || null,
-          history: rawHistory
-        }),
-      });
+        const aiRes = await fetch("/api/ai-search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: rawQuery,
+            normalizedQuery,
+            lang: detectedLang,
+            userId: user?._id || null,
+            history: rawHistory,
+          }),
+        });
 
-      if (aiRes.ok) {
-        const d = await aiRes.json();
-        const qType = (d.queryType || '').toLowerCase();
-        const respLang = d.detectedLanguage || detectedLang.split('-')[0];
-        const fullLang = respLang + '-IN';
+        if (aiRes.ok) {
+          const d = await aiRes.json();
+          const qType = (d.queryType || "").toLowerCase();
+          const respLang = d.detectedLanguage || detectedLang.split("-")[0];
+          const fullLang = respLang + "-IN";
 
-        if (qType.includes('general') || qType.includes('greeting') || qType.includes('comparison')) {
-          const answer = d.generalAnswer || 'I can help you find products. What are you looking for?';
-          addMessage({ sender: 'ai', content: answer, type: 'text', language: fullLang }, userKey);
+          if (
+            qType.includes("general") ||
+            qType.includes("greeting") ||
+            qType.includes("comparison")
+          ) {
+            const answer =
+              d.generalAnswer ||
+              "I can help you find products. What are you looking for?";
+            addMessage(
+              {
+                sender: "ai",
+                content: answer,
+                type: "text",
+                language: fullLang,
+              },
+              userKey,
+            );
 
-          if (isVoiceMode && ttsSupported) {
-            setTimeout(() => speakMessage(answer, fullLang), 300);
+            if (isVoiceMode && ttsSupported) {
+              setTimeout(() => speakMessage(answer, fullLang), 300);
+            }
+          } else {
+            // Product search
+            const sp = d.searchParams || {};
+            const products = d.products || [];
+            setProducts(products);
+            setSearchQuery("");
+
+            updateActiveThreadProducts(products, userKey);
+            addMessage(
+              {
+                sender: "ai",
+                content: rawQuery,
+                type: "search",
+                searchParams: sp,
+                products,
+                language: fullLang,
+              },
+              userKey,
+            );
+
+            const answer =
+              d.generalAnswer || `Found ${products.length} products for you.`;
+            addMessage(
+              {
+                sender: "ai",
+                content: answer,
+                type: "text",
+                language: fullLang,
+              },
+              userKey,
+            );
+
+            if (isVoiceMode && ttsSupported) {
+              setTimeout(() => speakMessage(answer, fullLang), 300);
+            }
           }
         } else {
-          // Product search
-          const sp = d.searchParams || {};
-          const products = d.products || [];
-          setProducts(products);
-          setSearchQuery('');
-          
-          updateActiveThreadProducts(products, userKey);
-          addMessage({ sender: 'ai', content: rawQuery, type: 'search', searchParams: sp, products, language: fullLang }, userKey);
-
-          const answer = d.generalAnswer || `Found ${products.length} products for you.`;
-          addMessage({ sender: 'ai', content: answer, type: 'text', language: fullLang }, userKey);
-
-          if (isVoiceMode && ttsSupported) {
-            setTimeout(() => speakMessage(answer, fullLang), 300);
-          }
+          addMessage(
+            {
+              sender: "ai",
+              content:
+                "Sorry, I had trouble understanding that. Please try again.",
+              type: "text",
+              language: "en",
+            },
+            userKey,
+          );
         }
-      } else {
-        addMessage({ sender: 'ai', content: 'Sorry, I had trouble understanding that. Please try again.', type: 'text', language: 'en' }, userKey);
+      } catch {
+        const err = "Connection error. Please check your network.";
+        addMessage({ sender: "ai", content: err, type: "text" }, userKey);
+      } finally {
+        setIsThinking(false);
+        inputRef.current?.focus();
       }
-    } catch {
-      const err = 'Connection error. Please check your network.';
-      addMessage({ sender: 'ai', content: err, type: 'text' }, userKey);
-    } finally {
-      setIsThinking(false);
-      inputRef.current?.focus();
-    }
-  }, [inputValue, isThinking, addMessage, setInputValue, setProducts, setSearchQuery, isVoiceMode, ttsSupported, speakMessage, userKey]);
+    },
+    [
+      inputValue,
+      isThinking,
+      addMessage,
+      setInputValue,
+      setProducts,
+      setSearchQuery,
+      isVoiceMode,
+      ttsSupported,
+      speakMessage,
+      userKey,
+    ],
+  );
 
   if (!isMounted) return null;
 
@@ -818,12 +1232,16 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     <div className="nv-sidebar__inner">
       {/* Top Brand Logo */}
       <div className="nv-sidebar__logo-area">
-        <Sparkles size={16} className="text-indigo-400 dark:text-indigo-300 animate-sparkle" />
-        <span className="nv-sidebar__logo-text font-black tracking-widest uppercase">Nuvix AI</span>
+        <div className="nv-brand-icon">
+          <Sparkles size={14} className="text-white" />
+        </div>
+        <span className="nv-sidebar__logo-text font-black tracking-widest uppercase">
+          NUVIX AI
+        </span>
       </div>
 
       {/* Glowing New Chat Trigger */}
-      <button 
+      <button
         onClick={handleNewChat}
         className="nv-sidebar__new-chat-btn animate-pulse-soft"
         title="Start a fresh shopping session"
@@ -842,14 +1260,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             {currentThreads.map((t) => {
               const isActive = t.id === activeThread?.id;
               return (
-                <div 
+                <div
                   key={t.id}
                   onClick={() => handleSwitchThread(t.id)}
-                  className={`nv-sidebar__thread-item group ${isActive ? 'nv-sidebar__thread-item--active' : ''}`}
+                  className={`nv-sidebar__thread-item group ${isActive ? "nv-sidebar__thread-item--active" : ""}`}
                 >
                   <MessageCircle size={13} className="nv-thread-icon" />
                   <span className="nv-thread-title">{t.title}</span>
-                  <button 
+                  <button
                     onClick={(e) => handleDeleteThread(e, t.id)}
                     className="nv-thread-delete-btn"
                     title="Delete conversation"
@@ -867,27 +1285,26 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <div className="nv-sidebar__footer">
         <div className="nv-sidebar__profile">
           <div className="nv-profile-avatar">
-            {user?.name?.charAt(0).toUpperCase() || 'A'}
+            {user?.name?.charAt(0).toUpperCase() || "A"}
           </div>
           <div className="nv-profile-info min-w-0">
-            <div className="nv-profile-name truncate">{user?.name || 'Shopper'}</div>
-            <div className="nv-profile-email truncate">{user?.email || 'Guest Mode'}</div>
+            <div className="nv-profile-name truncate">
+              {user?.name || "Shopper"}
+            </div>
+            <div className="nv-profile-email truncate">
+              {user?.email || "Guest Mode"}
+            </div>
           </div>
         </div>
 
         {/* Action button row */}
         <div className="nv-sidebar__actions">
-          <button 
-            onClick={toggleTheme}
-            className="nv-sidebar__action-btn"
-            title={theme === 'light' ? 'Dark Mode' : 'Light Mode'}
-          >
-            {theme === 'light' ? <Moon size={13} /> : <Sun size={13} />}
-          </button>
-          
           {user && (
-            <button 
-              onClick={() => { logout(); router.push('/login'); }}
+            <button
+              onClick={() => {
+                logout();
+                router.push("/login");
+              }}
               className="nv-sidebar__action-btn nv-sidebar__action-btn--logout"
               title="Logout"
             >
@@ -971,6 +1388,25 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
         }
+
+        /* Rounded brand icon */
+        .nv-brand-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #4f46e5, #7c3aed);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+        }
+        .nv-brand-icon--sm {
+          width: 24px;
+          height: 24px;
+          border-radius: 8px;
+        }
+
         .nv-sidebar__new-chat-btn {
           display: flex;
           align-items: center;
@@ -1186,21 +1622,29 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           color: #ef4444;
         }
 
-        /* ── Exact Split Screen Ratios: 40% Chat Console and 60% Shelf Shelf ── */
+        /* ── Full Page Chat Console (default) ── */
         @media(min-width: 1024px) {
           .nv-chat-console {
-            width: 40% !important;
+            width: 100% !important;
             flex: none !important;
             transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
           }
           .nv-product-shelf {
-            width: 60% !important;
+            width: 0% !important;
             flex: none !important;
+            overflow: hidden !important;
+            border: none !important;
+            padding: 0 !important;
             transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
           }
-          /* Smoothly expand to full screen when shelf is collapsed */
-          .nv-chat-console--shelf-collapsed {
-            width: 100% !important;
+          .nv-product-shelf--open {
+            width: 60% !important;
+            overflow: auto !important;
+            border-left: 1px solid var(--border) !important;
+            padding: 16px !important;
+          }
+          .nv-root:has(.nv-product-shelf--open) .nv-chat-console {
+            width: 40% !important;
           }
         }
 
@@ -1452,10 +1896,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         }
         .nv-msg-bubble {
           position: relative;
-          border-radius: 18px;
-          padding: 12px 48px 12px 16px;
+          border-radius: 16px;
+          padding: 9px 42px 9px 13px;
           box-shadow: var(--nv-shadow-sm);
           min-width: 50px;
+          max-width: 520px;
         }
         .nv-msg-bubble--user {
           background: var(--card);
@@ -1483,9 +1928,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           box-shadow: none;
         }
         .nv-msg-text {
-          font-size: 12.5px;
+          font-size: 11.5px;
           font-weight: 500;
-          line-height: 1.6;
+          line-height: 1.55;
           word-break: break-word;
         }
         .nv-bubble-actions {
@@ -1524,6 +1969,22 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         }
         .nv-copy-icon--done {
           color: #10b981;
+        }
+
+        .nv-tts-badge {
+          position: absolute;
+          bottom: -20px;
+          left: 13px;
+          font-size: 8.5px;
+          font-weight: 700;
+          color: var(--nv-indigo);
+          opacity: 0.75;
+          pointer-events: none;
+          white-space: nowrap;
+          animation: fadeIn 0.2s ease;
+        }
+        .dark .nv-tts-badge {
+          color: #a5b4fc;
         }
 
         /* ── Inline Product snaps inside chat bubbles ── */
@@ -1784,29 +2245,37 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           display: flex;
           align-items: center;
           gap: 10px;
-          background: var(--card);
-          border: 1px solid var(--border);
-          box-shadow: var(--nv-shadow-lg);
-          border-radius: 20px;
+          background: #f1f5f9;
+          border: 1.5px solid #e2e8f0;
+          box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
+          border-radius: 28px;
           padding: 6px 6px 6px 12px;
           transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
         }
+        .dark .nv-composer {
+          background: #1e1e2e;
+          border: 1.5px solid rgba(255, 255, 255, 0.08);
+          box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+        }
         .nv-composer:focus-within {
-          border-color: var(--nv-indigo);
-          box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12), var(--nv-shadow-lg);
+          border-color: rgba(99, 102, 241, 0.4);
+          box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.10), 0 4px 24px rgba(0, 0, 0, 0.12);
+        }
+        .dark .nv-composer:focus-within {
+          border-color: rgba(255, 255, 255, 0.18);
+          box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15), 0 4px 24px rgba(0, 0, 0, 0.4);
         }
         .nv-composer--listening {
           border-color: #ef4444;
           box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12), var(--nv-shadow-lg);
         }
-        .nv-voice-btn {
-          position: relative;
+        .nv-composer-plus-btn {
           width: 32px;
           height: 32px;
-          border-radius: 10px;
-          background: transparent;
-          border: 1px solid var(--border);
-          color: var(--muted-foreground);
+          border-radius: 50%;
+          background: rgba(99, 102, 241, 0.1);
+          border: 1px solid rgba(99, 102, 241, 0.15);
+          color: #6366f1;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -1814,9 +2283,47 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           flex-shrink: 0;
           transition: all 0.2s ease;
         }
+        .dark .nv-composer-plus-btn {
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.5);
+        }
+        .nv-composer-plus-btn:hover {
+          background: rgba(99, 102, 241, 0.18);
+          color: #4f46e5;
+          border-color: rgba(99, 102, 241, 0.3);
+        }
+        .dark .nv-composer-plus-btn:hover {
+          background: rgba(255, 255, 255, 0.12);
+          color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        .nv-voice-btn {
+          position: relative;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: rgba(99, 102, 241, 0.08);
+          border: none;
+          color: #64748b;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+        .dark .nv-voice-btn {
+          background: rgba(255, 255, 255, 0.08);
+          color: rgba(255, 255, 255, 0.6);
+        }
         .nv-voice-btn:hover {
-          background: var(--secondary);
-          color: var(--foreground);
+          background: rgba(99, 102, 241, 0.15);
+          color: #4f46e5;
+        }
+        .dark .nv-voice-btn:hover {
+          background: rgba(255, 255, 255, 0.15);
+          color: #ffffff;
         }
         .nv-voice-btn--active {
           background: rgba(239, 68, 68, 0.1) !important;
@@ -1827,23 +2334,45 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         
         /* Two-Way ChatGPT Headphones Button Style */
         .nv-headphones-btn {
-          width: 32px;
-          height: 32px;
-          border-radius: 10px;
-          background: transparent;
-          border: 1px solid var(--border);
-          color: var(--muted-foreground);
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 60%, #06b6d4 100%);
+          border: none;
+          color: #ffffff;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
           flex-shrink: 0;
-          transition: all 0.2s ease;
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          box-shadow: 0 4px 14px rgba(79, 70, 229, 0.45);
+          animation: headphoneGlow 3s ease-in-out infinite;
+          position: relative;
+          overflow: hidden;
+        }
+        .nv-headphones-btn::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%);
+          border-radius: 50%;
+          pointer-events: none;
         }
         .nv-headphones-btn:hover {
-          background: var(--secondary);
-          color: var(--nv-indigo);
-          border-color: rgba(79, 70, 229, 0.3);
+          transform: scale(1.1) translateY(-1px);
+          box-shadow: 0 8px 24px rgba(79, 70, 229, 0.6);
+          animation: none;
+        }
+        .nv-headphones-btn:active {
+          transform: scale(0.95);
+        }
+        .dark .nv-headphones-btn {
+          box-shadow: 0 4px 18px rgba(99, 102, 241, 0.55);
+        }
+        @keyframes headphoneGlow {
+          0%, 100% { box-shadow: 0 4px 14px rgba(79, 70, 229, 0.45); }
+          50% { box-shadow: 0 6px 22px rgba(99, 102, 241, 0.7), 0 0 0 4px rgba(79, 70, 229, 0.12); }
         }
 
         @keyframes voicePulse {
@@ -1873,14 +2402,21 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           box-shadow: none !important;
           font-size: 13px !important;
           font-weight: 500;
-          color: var(--foreground);
+          color: #1e293b;
           height: 36px;
           padding: 0 !important;
           outline: none;
         }
+        .dark .nv-input {
+          color: #ffffff;
+        }
         .nv-input::placeholder {
-          color: var(--muted-foreground);
-          opacity: 0.75;
+          color: rgba(100, 116, 139, 0.7);
+          opacity: 1;
+        }
+        .dark .nv-input::placeholder {
+          color: rgba(255, 255, 255, 0.4);
+          opacity: 1;
         }
         .nv-listening-badge {
           position: absolute;
@@ -1965,31 +2501,43 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           color: var(--nv-indigo) !important;
         }
         .nv-send-btn {
-          width: 36px;
-          height: 36px;
-          border-radius: 12px;
-          background: linear-gradient(135deg, var(--nv-indigo), #7c3aed);
-          color: #fff;
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          background: transparent;
+          border: 1.5px solid rgba(99, 102, 241, 0.35);
+          color: rgba(99, 102, 241, 0.55);
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
           flex-shrink: 0;
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          border: none;
+          transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .dark .nv-send-btn {
+          border: 1.5px solid rgba(129, 140, 248, 0.3);
+          color: rgba(129, 140, 248, 0.5);
+        }
+        .nv-send-btn:not(:disabled) {
+          background: linear-gradient(135deg, var(--nv-indigo), var(--nv-indigo-light));
+          color: #fff;
+          border-color: transparent;
           box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
         }
         .nv-send-btn:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 6px 16px rgba(79, 70, 229, 0.45);
+          transform: translateY(-1px) scale(1.06);
+          box-shadow: 0 6px 18px rgba(79, 70, 229, 0.5);
         }
         .nv-send-btn:active:not(:disabled) {
-          transform: scale(0.96);
+          transform: scale(0.95);
         }
         .nv-send-btn:disabled {
-          opacity: 0.35;
           cursor: not-allowed;
           box-shadow: none;
+        }
+        .nv-send-btn:hover:disabled {
+          border-color: rgba(99, 102, 241, 0.5);
+          color: rgba(99, 102, 241, 0.7);
         }
         .nv-footer__note {
           font-size: 9px;
@@ -2307,44 +2855,64 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
       <div className="nv-root">
         {/* ── Left Sidebar (Chat History, New Chat) ── */}
-        <aside className={`nv-sidebar ${sidebarCollapsed ? 'nv-sidebar--collapsed' : ''}`} role="complementary" aria-label="Conversation History">
+        <aside
+          className={`nv-sidebar ${sidebarCollapsed ? "nv-sidebar--collapsed" : ""}`}
+          role="complementary"
+          aria-label="Conversation History"
+        >
           {renderSidebar()}
         </aside>
 
         {/* ── Center Chat Console (Wide ChatGPT/Gemini Stream) ── */}
-        <section className={`nv-chat-console ${sidebarCollapsed ? 'nv-chat-console--sidebar-collapsed' : ''} ${!showShelf ? 'nv-chat-console--shelf-collapsed' : ''}`} role="main" aria-label="Nuvix AI Conversation Console">
+        <section
+          className={`nv-chat-console ${sidebarCollapsed ? "nv-chat-console--sidebar-collapsed" : ""} ${!showShelf ? "nv-chat-console--shelf-collapsed" : ""}`}
+          role="main"
+          aria-label="Nuvix AI Conversation Console"
+        >
           {/* Header */}
           <div className="nv-chat-console-header">
             <div className="nv-chat-header-left">
-              <button 
+              <button
                 onClick={toggleSidebar}
                 className="nv-sidebar-toggle-btn"
                 title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
               >
-                {sidebarCollapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+                {sidebarCollapsed ? (
+                  <PanelLeft size={16} />
+                ) : (
+                  <PanelLeftClose size={16} />
+                )}
               </button>
-              <div className="nv-chat-header-title">{activeThread?.title || 'New Shopping Chat'}</div>
+              <div className="nv-chat-header-title">
+                {activeThread?.title || "New Shopping Chat"}
+              </div>
             </div>
-            
+
             <div className="nv-chat-header-right">
               {/* Reset Thread Action */}
-              <button 
+              <button
                 onClick={() => clearMessages(userKey)}
                 className="nv-header-action-btn"
                 title="Clear active thread messages"
               >
                 <Plus size={16} />
               </button>
-              
+
               {/* Product Shelf Toggle Button with animated badge indicator */}
-              <button 
-                onClick={() => setShowShelf(prev => !prev)}
+              <button
+                onClick={() => setShowShelf((prev) => !prev)}
                 className={`nv-header-action-btn`}
                 title={showShelf ? "Hide Catalog" : "View Catalog"}
               >
-                {showShelf ? <PanelRightClose size={16} /> : <PanelRight size={16} />}
+                {showShelf ? (
+                  <PanelRightClose size={16} />
+                ) : (
+                  <PanelRight size={16} />
+                )}
                 {activeThread?.products && activeThread.products.length > 0 && (
-                  <span className="nv-header-action-badge animate-pulse">{activeThread.products.length}</span>
+                  <span className="nv-header-action-badge animate-pulse">
+                    {activeThread.products.length}
+                  </span>
                 )}
               </button>
             </div>
@@ -2356,14 +2924,19 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               <div className="nv-welcome-screen">
                 <div className="nv-welcome-screen__glow-orb" />
                 <div className="nv-welcome-screen__header animate-fade-down">
-                  <div className="nv-welcome-screen__logo glow-brand">
-                    <Sparkles size={24} className="text-cyan-200 animate-sparkle" />
+                  <div className="nv-welcome-screen__logo glow-brand" style={{ background: "none", boxShadow: "none", width: 72, height: 72, borderRadius: 22, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(6,182,212,0.08) 100%)", border: "1.5px solid rgba(99,102,241,0.2)", boxShadow: "0 12px 40px rgba(79,70,229,0.25)" }}>
+                    <NuvixLogo size={48} glow={true} />
                   </div>
                   <h2 className="nv-welcome-screen__title">
-                    Where style meets <span className="gradient-brand-text font-black">conversational commerce.</span>
+                    Where style meets{" "}
+                    <span className="gradient-brand-text font-black">
+                      conversational commerce.
+                    </span>
                   </h2>
                   <p className="nv-welcome-screen__subtitle">
-                    I'm Nuvix AI, your intelligent shopping companion. Describe what you're looking for, compare options, and manage your cart dynamically.
+                    I'm Nuvix AI, your intelligent shopping companion. Describe
+                    what you're looking for, compare options, and manage your
+                    cart dynamically.
                   </p>
                 </div>
 
@@ -2378,15 +2951,25 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                       <div className="nv-welcome-card__icon">{chip.icon}</div>
                       <div className="nv-welcome-card__content">
                         <h4 className="nv-welcome-card__title">{chip.text}</h4>
-                        <p className="nv-welcome-card__desc">Search "{chip.query}"</p>
+                        <p className="nv-welcome-card__desc">
+                          Search "{chip.query}"
+                        </p>
                       </div>
-                      <ChevronRight size={13} className="nv-welcome-card__arrow" />
+                      <ChevronRight
+                        size={13}
+                        className="nv-welcome-card__arrow"
+                      />
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div ref={chatContainerRef} className="nv-chat-messages-container" role="log" aria-live="polite">
+              <div
+                ref={chatContainerRef}
+                className="nv-chat-messages-container"
+                role="log"
+                aria-live="polite"
+              >
                 {messages.map((msg: Message, i: number) => (
                   <MessageBubble
                     key={i}
@@ -2402,8 +2985,14 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 ))}
                 {isThinking && (
                   <div className="nv-msg-row nv-msg-row--ai animate-slide-left">
-                    <div className="nv-msg-avatar nv-msg-avatar--ai glow-brand"><Sparkles size={13} className="text-cyan-200" /></div>
-                    <div className="nv-msg-bubble nv-msg-bubble--ai nv-msg-bubble--thinking"><TypingDots /></div>
+                    <div className="nv-msg-avatar nv-msg-avatar--ai glow-brand">
+                      <div className="nv-brand-icon nv-brand-icon--sm">
+                        <Sparkles size={11} className="text-white" />
+                      </div>
+                    </div>
+                    <div className="nv-msg-bubble nv-msg-bubble--ai nv-msg-bubble--thinking">
+                      <TypingDots />
+                    </div>
                   </div>
                 )}
               </div>
@@ -2413,30 +3002,17 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           {/* Floating Composer Area */}
           <div className="nv-chat-input-container">
             <div className="nv-composer-wrapper">
-              <div className={`nv-composer ${isListening ? 'nv-composer--listening' : ''}`}>
-                
-                {/* 🎧 ChatGPT-style Continuous Two-Way Voice Mode button */}
-                {ttsSupported && voiceSupported && (
-                  <button 
-                    onClick={startVoiceConversation}
-                    className="nv-headphones-btn"
-                    title="Start hands-free voice companion (ChatGPT Voice Mode)"
-                  >
-                    <Volume1 size={15} />
-                  </button>
-                )}
-
-                {voiceSupported && (
-                  <button
-                    className={`nv-voice-btn ${isListening ? 'nv-voice-btn--active' : ''}`}
-                    onClick={startListening}
-                    aria-label={isListening ? 'Stop listening' : 'Start voice input'}
-                    title="Voice input"
-                  >
-                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-                    {isListening && <span className="nv-voice-ring" />}
-                  </button>
-                )}
+              <div
+                className={`nv-composer ${isListening ? "nv-composer--listening" : ""}`}
+              >
+                {/* + New Chat button */}
+                <button
+                  onClick={handleNewChat}
+                  className="nv-composer-plus-btn"
+                  title="New conversation"
+                >
+                  <Plus size={16} />
+                </button>
 
                 <div className="nv-input-wrap">
                   {isListening && transcript && (
@@ -2454,36 +3030,24 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                     ref={inputRef}
                     type="text"
                     className="nv-input animate-fade-in"
-                    placeholder={isListening ? '' : 'Ask in any language… (e.g. men shirt under 1500, smartwatches)'}
-                    value={isListening ? '' : inputValue}
+                    placeholder={isListening ? "" : "Ask anything"}
+                    value={isListening ? "" : inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
                     disabled={isThinking || isListening}
                     aria-label="Chat input"
                   />
                 </div>
 
-                {/* Language Picker Badge */}
-                {voiceSupported && (
-                  <div className="nv-lang-picker-wrap">
-                    <button className="nv-lang-picker-btn" onClick={() => setShowLangPicker(p => !p)}>
-                      <Languages size={13} />
-                      <span>{SUPPORTED_LANGS.find(l => l.code === selectedLang)?.label}</span>
-                    </button>
-                    {showLangPicker && (
-                      <div className="nv-lang-dropdown scrollbar-hide">
-                        {SUPPORTED_LANGS.map(l => (
-                          <button
-                            key={l.code}
-                            className={`nv-lang-option ${selectedLang === l.code ? 'nv-lang-option--active' : ''}`}
-                            onClick={() => { setSelectedLang(l.code); setShowLangPicker(false); }}
-                          >
-                            {l.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+
+                {ttsSupported && voiceSupported && (
+                  <button
+                    onClick={startVoiceConversation}
+                    className="nv-headphones-btn"
+                    title="Start hands-free voice companion"
+                  >
+                    <Headphones size={15} />
+                  </button>
                 )}
 
                 <button
@@ -2496,20 +3060,26 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 </button>
               </div>
             </div>
-            <p className="nv-footer__note">Supports 10+ Indian languages · Auto preference learning · AI answers may vary</p>
+            <p className="nv-footer__note">
+              Nuvix AI can make mistakes. Verify important information.
+            </p>
           </div>
         </section>
 
         {/* ── Right Collapsible Product Shelf (Catalog Shelf) ── */}
-        <div className={`nv-product-shelf ${showShelf ? 'nv-product-shelf--open' : 'nv-product-shelf--closed'}`}>
+        <div
+          className={`nv-product-shelf ${showShelf ? "nv-product-shelf--open" : "nv-product-shelf--closed"}`}
+        >
           <div className="nv-shelf-header">
             <div className="nv-shelf-header__left">
               <ShoppingBag size={14} className="text-indigo-500" />
               <span className="nv-shelf-header__title">Companion Catalog</span>
             </div>
             <div className="nv-shelf-header__right">
-              <span className="nv-shelf-header__badge">{activeThread?.products?.length || 0} products found</span>
-              <button 
+              <span className="nv-shelf-header__badge">
+                {activeThread?.products?.length || 0} products found
+              </span>
+              <button
                 onClick={() => setShowShelf(false)}
                 className="nv-shelf-close-btn"
                 title="Collapse Catalog"
@@ -2525,7 +3095,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
         {/* FAB trigger for mobile drawers */}
         <div className="nv-fab">
-          <button className="nv-fab__btn" onClick={() => setIsMobileChatOpen(true)} aria-label="Open AI assistant">
+          <button
+            className="nv-fab__btn"
+            onClick={() => setIsMobileChatOpen(true)}
+            aria-label="Open AI assistant"
+          >
             <MessageCircle size={22} />
             <span className="nv-fab__badge">AI</span>
           </button>
@@ -2535,45 +3109,95 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         {isMobileChatOpen && (
           <div
             className="nv-drawer-backdrop"
-            role="dialog" aria-modal="true"
-            onClick={(e) => { if (e.target === e.currentTarget) setIsMobileChatOpen(false); }}
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsMobileChatOpen(false);
+            }}
           >
             <div className="nv-drawer">
               <div className="nv-drawer__handle" />
-              
-              <div className="nv-chat-console-header" style={{ borderTopLeftRadius: '20px', borderTopRightRadius: '20px' }}>
+
+              <div
+                className="nv-chat-console-header"
+                style={{
+                  borderTopLeftRadius: "20px",
+                  borderTopRightRadius: "20px",
+                }}
+              >
                 <div className="nv-chat-header-left">
-                  <div className="nv-chat-header-title">{activeThread?.title || 'Mobile Chat'}</div>
+                  <div className="nv-chat-header-title">
+                    {activeThread?.title || "Mobile Chat"}
+                  </div>
                 </div>
                 <div className="nv-chat-header-right">
-                  <button onClick={() => clearMessages(userKey)} className="nv-header-action-btn"><Plus size={16} /></button>
-                  <button className="nv-shelf-close-btn" onClick={() => setIsMobileChatOpen(false)} aria-label="Close chat"><X size={16} /></button>
+                  <button
+                    onClick={() => clearMessages(userKey)}
+                    className="nv-header-action-btn"
+                  >
+                    <Plus size={16} />
+                  </button>
+                  <button
+                    className="nv-shelf-close-btn"
+                    onClick={() => setIsMobileChatOpen(false)}
+                    aria-label="Close chat"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
               </div>
 
               <div className="nv-chat-container-wrap">
                 {isNewChat ? (
-                  <div className="nv-welcome-screen" style={{ padding: '20px 14px' }}>
-                    <h2 className="nv-welcome-screen__title" style={{ fontSize: '18px' }}>
-                      Nuvix AI <span className="gradient-brand-text font-black">Shopping Assistant</span>
+                  <div
+                    className="nv-welcome-screen"
+                    style={{ padding: "20px 14px" }}
+                  >
+                    <h2
+                      className="nv-welcome-screen__title"
+                      style={{ fontSize: "18px" }}
+                    >
+                      Nuvix AI{" "}
+                      <span className="gradient-brand-text font-black">
+                        Shopping Assistant
+                      </span>
                     </h2>
-                    <p className="nv-welcome-screen__subtitle">Describe what you're looking for, compare options, and manage your cart dynamically.</p>
-                    <div className="nv-welcome-screen__cards" style={{ width: '100%' }}>
+                    <p className="nv-welcome-screen__subtitle">
+                      Describe what you're looking for, compare options, and
+                      manage your cart dynamically.
+                    </p>
+                    <div
+                      className="nv-welcome-screen__cards"
+                      style={{ width: "100%" }}
+                    >
                       {SUGGESTION_CHIPS.map((chip, idx) => (
                         <button
                           key={idx}
-                          onClick={() => { handleSendMessage(chip.query); setIsMobileChatOpen(true); }}
+                          onClick={() => {
+                            handleSendMessage(chip.query);
+                            setIsMobileChatOpen(true);
+                          }}
                           className="nv-welcome-card surface"
-                          style={{ padding: '10px 12px' }}
+                          style={{ padding: "10px 12px" }}
                         >
-                          <span className="nv-welcome-card__icon">{chip.icon}</span>
-                          <span className="nv-welcome-card__title" style={{ fontSize: '10px' }}>{chip.text}</span>
+                          <span className="nv-welcome-card__icon">
+                            {chip.icon}
+                          </span>
+                          <span
+                            className="nv-welcome-card__title"
+                            style={{ fontSize: "10px" }}
+                          >
+                            {chip.text}
+                          </span>
                         </button>
                       ))}
                     </div>
                   </div>
                 ) : (
-                  <div className="nv-chat-messages-container" style={{ padding: '14px 10px 100px' }}>
+                  <div
+                    className="nv-chat-messages-container"
+                    style={{ padding: "14px 10px 100px" }}
+                  >
                     {messages.map((msg: Message, i: number) => (
                       <MessageBubble
                         key={i}
@@ -2589,39 +3213,52 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                     ))}
                     {isThinking && (
                       <div className="nv-msg-row nv-msg-row--ai">
-                        <div className="nv-msg-avatar nv-msg-avatar--ai glow-brand"><Sparkles size={13} className="text-cyan-200" /></div>
-                        <div className="nv-msg-bubble nv-msg-bubble--ai nv-msg-bubble--thinking"><TypingDots /></div>
+                        <div className="nv-msg-avatar nv-msg-avatar--ai glow-brand">
+                          <div className="nv-brand-icon nv-brand-icon--sm">
+                            <Sparkles size={11} className="text-white" />
+                          </div>
+                        </div>
+                        <div className="nv-msg-bubble nv-msg-bubble--ai nv-msg-bubble--thinking">
+                          <TypingDots />
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
               </div>
 
-              <div className="nv-chat-input-container" style={{ padding: '10px 12px 16px', position: 'relative' }}>
+              <div
+                className="nv-chat-input-container"
+                style={{ padding: "10px 12px 16px", position: "relative" }}
+              >
                 <div className="nv-composer-wrapper">
-                  <div className={`nv-composer ${isListening ? 'nv-composer--listening' : ''}`}>
-                    {voiceSupported && (
-                      <button className={`nv-voice-btn ${isListening ? 'nv-voice-btn--active' : ''}`} onClick={startListening}>
-                        {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-                      </button>
-                    )}
+                  <div
+                    className={`nv-composer ${isListening ? "nv-composer--listening" : ""}`}
+                  >
                     <div className="nv-input-wrap">
                       <input
                         ref={inputRef}
                         type="text"
                         className="nv-input"
                         placeholder="Ask in any language…"
-                        value={isListening ? '' : inputValue}
+                        value={isListening ? "" : inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                        onKeyDown={(e) =>
+                          e.key === "Enter" && handleSendMessage()
+                        }
                         disabled={isThinking || isListening}
                       />
                     </div>
-                    <button className="nv-send-btn" onClick={() => handleSendMessage()} disabled={!inputValue.trim() || isThinking}><Send size={14} /></button>
+                    <button
+                      className="nv-send-btn"
+                      onClick={() => handleSendMessage()}
+                      disabled={!inputValue.trim() || isThinking}
+                    >
+                      <Send size={14} />
+                    </button>
                   </div>
                 </div>
               </div>
-
             </div>
           </div>
         )}
@@ -2633,45 +3270,64 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           <div className="nv-voice-orb-wrapper">
             {/* Ambient waves */}
             <div className="nv-voice-wave-ring animate-pulse-soft" />
-            <div className="nv-voice-wave-ring animate-pulse-soft" style={{ animationDelay: '0.8s' }} />
-            <div className="nv-voice-wave-ring animate-pulse-soft" style={{ animationDelay: '1.6s' }} />
+            <div
+              className="nv-voice-wave-ring animate-pulse-soft"
+              style={{ animationDelay: "0.8s" }}
+            />
+            <div
+              className="nv-voice-wave-ring animate-pulse-soft"
+              style={{ animationDelay: "1.6s" }}
+            />
 
             {/* Glowing Orb */}
-            <div 
+            <div
               className={`nv-voice-orb nv-voice-orb--${voiceConvState}`}
               onClick={() => {
-                if (voiceConvState === 'listening') {
-                  setVoiceConvState('paused');
+                if (voiceConvState === "listening") {
+                  setVoiceConvState("paused");
                   stopSpeaking();
                   if (recognitionRef.current) recognitionRef.current.stop();
-                } else if (voiceConvState === 'paused') {
-                  setVoiceConvState('listening');
+                } else if (voiceConvState === "paused") {
+                  setVoiceConvState("listening");
                   triggerVoiceConvListen();
                 }
               }}
             >
-              {voiceConvState === 'listening' && <Mic size={24} className="text-white" />}
-              {voiceConvState === 'thinking' && <Loader2 size={24} className="text-white animate-spin" />}
-              {voiceConvState === 'speaking' && <Volume2 size={24} className="text-white animate-pulse-beat" />}
-              {voiceConvState === 'paused' && <VolumeX size={24} className="text-white" />}
+              {voiceConvState === "listening" && (
+                <Mic2 size={24} className="text-white" />
+              )}
+              {voiceConvState === "thinking" && (
+                <Loader2 size={24} className="text-white animate-spin" />
+              )}
+              {voiceConvState === "speaking" && (
+                <Volume2 size={24} className="text-white animate-pulse-beat" />
+              )}
+              {voiceConvState === "paused" && (
+                <VolumeX size={24} className="text-white" />
+              )}
             </div>
           </div>
 
           {/* Dynamic state tag */}
-          <div className={`nv-voice-conv-status nv-voice-conv-status--${voiceConvState}`}>
-            {voiceConvState === 'listening' && 'Listening...'}
-            {voiceConvState === 'thinking' && 'Thinking...'}
-            {voiceConvState === 'speaking' && 'Speaking...'}
-            {voiceConvState === 'paused' && 'Voice Session Paused'}
+          <div
+            className={`nv-voice-conv-status nv-voice-conv-status--${voiceConvState}`}
+          >
+            {voiceConvState === "listening" && "Listening..."}
+            {voiceConvState === "thinking" && "Thinking..."}
+            {voiceConvState === "speaking" && "Speaking..."}
+            {voiceConvState === "paused" && "Voice Session Paused"}
           </div>
 
           {/* Dynamic real-time subtitle block */}
-          <p className={`nv-voice-conv-text ${voiceConvState === 'thinking' ? 'nv-voice-conv-text--thinking' : ''}`}>
-            {voiceConvTranscript || (voiceConvState === 'listening' ? 'Say something...' : '')}
+          <p
+            className={`nv-voice-conv-text ${voiceConvState === "thinking" ? "nv-voice-conv-text--thinking" : ""}`}
+          >
+            {voiceConvTranscript ||
+              (voiceConvState === "listening" ? "Say something..." : "")}
           </p>
 
           {/* Call hang-up control */}
-          <button 
+          <button
             onClick={endVoiceConversation}
             className="nv-voice-conv-close-btn animate-fade-up"
             title="End Hands-Free Voice Session"
